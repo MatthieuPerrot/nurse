@@ -81,9 +81,13 @@ class StateMachine(State):
 
 	def start(self):
 		if self._initial_state is None:
-			default_state = State('__default__')
-			self.add_state(default_state)
-			self._initial_state = default_state
+			if len(self._possible_states):
+				s = self._possible_states.keys()[0]
+				self._initial_state = self._possible_states[s]
+			else:
+				default_state = State('__default__')
+				self.add_state(default_state)
+				self._initial_state = default_state
 		self._current_state = self._initial_state
 		self._current_state.on_entered()
 		self.status = StateMachine.START

@@ -15,16 +15,74 @@ sys.path.append(sys.path[0] + '/../../examples/')
 from test_spatial_event import *
 
 
+color_map = np.random.randint(0, 255, (10, 3))
+#-------------------------------------------------------------------------------
+# Notes :
+# -------
+
 #-------------------------------------------------------------------------------
 class Game(Object):
-	def __init__(self, name='game'):
+	def __init__(self, name='game', context=None):
 		Object.__init__(self, name)
-	pass # FIXME
+		# XXX : this method should be renamed ?
+		context.add_fsm(self)
+		self.score_sprite = None
+		self.score = 1000
+		self.current_color = None
+		self.speed = 100 # ms
+		self.time_between_two_squares = 1000 # ms
+		self.level = 1
 
-game = Game()
+	def select_current_color(self):
+		n = len(color_map)
+		self.current_color = color_map[np.random.randint(n)]
+
+		#TODO : change current_color_sprite
+
+	def collide(self, square):
+		'''
+
+		'''
+		if square.color == self._current_color:
+			self.score += self.speed * self.level
+		else:
+			factor = (((self.level + 2) / 2.6) ** 2).astype('i')
+			self.score -= self.speed * factor
+		self.score_sprite.text = str(self.score)
+
+	def update(self, dt):
+		print dt
+
+
+class MultiStaticSprite(Sprite):
+	def __init__(self, name='multistatic_sprite', context=None, layer=1):
+		Sprite.__init__(self, name, context, layer)
+
+	def add_state(self, state):
+		Sprite.add_state(self, state)
+
+	def add_state_from_filename(self, state_name, filename):
+		state = StaticSprite(state_name, None, self._layer)
+		self.add_state(state)
+
+	def add_state_from_color(self, state_name, size=None, shift=(0, 0),
+			center_location=(0,0), color=(0, 0, 0), alpha=128):
+		state = UniformLayer(state_name, None, self._layer, size,
+				shift, center_location, color, alpha)
+		self.add_state(state)
+
+	def get_frame_infos(self, time):
+		return self._current_state.get_frame_infos(time)
+
+#	def on_state_changed(
+
+
+class FallingMotion(Motion):
+	def __init__(self, name='falling_motion', context=None, speed=100.):
+		Motion.__init__(self, name, context, speed)
+
 
 #-------------------------------------------------------------------------------
-color_map = np.random.randint(0, 255, (10, 3))
 
 def random_square_generator(context, game):
 	size = (20, 20)
@@ -32,17 +90,20 @@ def random_square_generator(context, game):
 	color = color_map[np.random.randint(len(color_map))]
 	fsm = UniformLayer('square', context, layer=0, size=size, shift=shift,
 			center_location='centered', color=color, alpha=255)
+	fsm.set_motion(FallingMotion(speed=120.))
 	fsm.start()
-	return ChangeScoreOnCollision(fsm, game)
+	return ChangeScoreOnCollision(fsm, color, game)
 
 
 #-------------------------------------------------------------------------------
 class ChangeScoreOnCollision(ObjectProxy):
-	def __init__(self, receiver, game):
+	def __init__(self, receiver, color, game):
 		ObjectProxy.__init__(self, receiver)
+		self.color = color
 		self._game = game
 
 	def on_collision(self, event):
+		self._game.collide(self)
 		pass # FIXME
 
 
@@ -70,6 +131,9 @@ def main():
 	universe.context_manager = context_manager
 	resolution = Config.resolution
 	context = Context("context")
+
+	# game
+	game = Game('game', context)
 
 	# layers
 	bg_layer, player_layer, fg_layer, text_layer = range(4)
@@ -106,14 +170,19 @@ def main():
 			'??????', 'Times New Roman', 10)
 	score_label.set_location((80, 0))
 	score_label.start()
+	game.score_sprite = score_label
 
 	strings = ['Hit spacebar to catch squares. You earn points when its color is the same than the active one. ',
 	'You loose points if colors are different and lose more points when you miss a square.']
-	for i, str in enumerate(strings):
+	for i, string in enumerate(strings):
 		instr = Text('text', context, text_layer,
-				str, 'Times New Roman', 10)
+				string, 'Times New Roman', 10)
 		instr.set_location((100, 560 + i * 15))
 		instr.start()
+
+
+	current_color_sprite = MultiStaticSprite('current_color',
+					context, text_layer)
 
 	white_color = (255, 255, 255)
 	size = np.array([20, 20])
@@ -124,6 +193,11 @@ def main():
 			size + 2, shift - 1, 'top_left', white_color, 255)
 		UniformLayer('square', context, text_layer,
 			(20, 20), shift, 'top_left', color, 255)
+
+		shift[1] = 100
+		current_color_sprite.add_state_from_color('color_' + str(i),
+				(20, 20), shift, 'top_left', color, 255)
+	current_color_sprite.start()
 	
 
 	# collider manager
