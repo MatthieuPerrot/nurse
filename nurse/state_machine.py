@@ -68,6 +68,16 @@ class StateMachine(State):
 		self._possible_states[state.name] = state
 		state._fsm = self
 
+	def set_state(self, state):
+		src = self._current_state
+		self._current_state = state
+		self.emit("state_changed", (src, self._current_state))
+
+	def set_state_from_name(self, name):
+		src = self._current_state
+		self._current_state = self._possible_states[name]
+		self.emit("state_changed", (src, self._current_state))
+
 	def change_state(self, src, dst, src_prop={}, dst_prop={}):
 		if src != self._current_state: return
 		if self._current_state is not None:

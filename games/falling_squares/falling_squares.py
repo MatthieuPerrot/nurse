@@ -19,40 +19,11 @@ color_map = np.random.randint(0, 255, (10, 3))
 #-------------------------------------------------------------------------------
 # Notes :
 # -------
+# - use a timer to generate squares could be better
+
 
 #-------------------------------------------------------------------------------
-class Game(Object):
-	def __init__(self, name='game', context=None):
-		Object.__init__(self, name)
-		# XXX : this method should be renamed ?
-		context.add_fsm(self)
-		self.score_sprite = None
-		self.score = 1000
-		self.current_color = None
-		self.speed = 100 # ms
-		self.time_between_two_squares = 1000 # ms
-		self.level = 1
-
-	def select_current_color(self):
-		n = len(color_map)
-		self.current_color = color_map[np.random.randint(n)]
-
-		#TODO : change current_color_sprite
-
-	def collide(self, square):
-		'''
-
-		'''
-		if square.color == self._current_color:
-			self.score += self.speed * self.level
-		else:
-			factor = (((self.level + 2) / 2.6) ** 2).astype('i')
-			self.score -= self.speed * factor
-		self.score_sprite.text = str(self.score)
-
-	def update(self, dt):
-		print dt
-
+# TODO: to be moved to sprite.py
 
 class MultiStaticSprite(Sprite):
 	def __init__(self, name='multistatic_sprite', context=None, layer=1):
@@ -71,31 +42,18 @@ class MultiStaticSprite(Sprite):
 				shift, center_location, color, alpha)
 		self.add_state(state)
 
+	def add_state_from_sprite(self, sprite):
+		self.add_state(sprite)
+
 	def get_frame_infos(self, time):
 		return self._current_state.get_frame_infos(time)
 
-#	def on_state_changed(
-
-
+#-------------------------------------------------------------------------------
 class FallingMotion(Motion):
 	def __init__(self, name='falling_motion', context=None, speed=100.):
 		Motion.__init__(self, name, context, speed)
 
 
-#-------------------------------------------------------------------------------
-
-def random_square_generator(context, game):
-	size = (20, 20)
-	shift = (np.random.randint(game.resolution[0] - size[0]), 0)
-	color = color_map[np.random.randint(len(color_map))]
-	fsm = UniformLayer('square', context, layer=0, size=size, shift=shift,
-			center_location='centered', color=color, alpha=255)
-	fsm.set_motion(FallingMotion(speed=120.))
-	fsm.start()
-	return ChangeScoreOnCollision(fsm, color, game)
-
-
-#-------------------------------------------------------------------------------
 class ChangeScoreOnCollision(ObjectProxy):
 	def __init__(self, receiver, color, game):
 		ObjectProxy.__init__(self, receiver)
@@ -105,6 +63,58 @@ class ChangeScoreOnCollision(ObjectProxy):
 	def on_collision(self, event):
 		self._game.collide(self)
 		pass # FIXME
+
+
+#-------------------------------------------------------------------------------
+class Game(Object):
+	def __init__(self, name='game', context=None):
+		Object.__init__(self, name)
+		# XXX : this method should be renamed ?
+		context.add_fsm(self)
+		self.context = context
+		self.score_sprite = None
+		self.score = 1000
+		self.current_color = None
+		self.current_color_sprite = None
+		self.speed = 100 # ms
+		self.time_between_two_squares = 1000 # ms
+		self.level = 1
+
+	def select_current_color(self):
+		n = len(color_map)
+		r = np.random.randint(n)
+		self.current_color = color_map[r]
+		self.current_color_sprite.set_state_from_name("color_" + str(r))
+
+	def random_square_generator(self):
+		size = (20, 20)
+		shift = (np.random.randint(game.resolution[0] - size[0]), 0)
+		color = color_map[np.random.randint(len(color_map))]
+		fsm = UniformLayer('square', self.context, layer=0, size=size,
+				shift=shift, center_location='centered',
+						color=color, alpha=255)
+		fsm.set_motion(FallingMotion(speed=120.))
+		fsm.start()
+		return ChangeScoreOnCollision(fsm, color, self)
+
+	def collide(self, square):
+		'''
+
+		'''
+		if square.color == self._current_color:
+			self.score += self.speed * self.level
+		else:
+			factor = (((self.level + 2) / 2.6) ** 2).astype('i')
+			self.score -= self.speed * factor
+		self.score_sprite.text = str(self.score)
+
+	def update(self, dt):
+		#FIXME : ok selecing current_color worked
+		if (int(dt) % 3 == 1): self.select_current_color()
+
+
+
+#	def on_state_changed(
 
 
 #-------------------------------------------------------------------------------
@@ -147,7 +157,7 @@ def main():
 	# fg
 	fg_color = (64, 64, 64)
 	height = 40
-	width = 40
+	width = 60
 	UniformLayer('fg_bottom', context, fg_layer,
 		(resolution[0], height), (0, resolution[1] - height),
 		'top_left', fg_color, 255)
@@ -182,23 +192,38 @@ def main():
 
 
 	current_color_sprite = MultiStaticSprite('current_color',
-					context, text_layer)
+					context, text_layer + 1)
+	game.current_color_sprite = current_color_sprite
 
 	white_color = (255, 255, 255)
 	size = np.array([20, 20])
 	for i, color in enumerate(color_map):
-		shift = np.array([resolution[0] - width + size[0] / 2,
-							100 + i * 40])
+		shift = np.array([resolution[0] - (width + size[0]) / 2,
+							170 + i * 40])
 		UniformLayer('square', context, text_layer,
 			size + 2, shift - 1, 'top_left', white_color, 255)
 		UniformLayer('square', context, text_layer,
 			(20, 20), shift, 'top_left', color, 255)
 
-		shift[1] = 100
-		current_color_sprite.add_state_from_color('color_' + str(i),
-				(20, 20), shift, 'top_left', color, 255)
+		sprite = UniformLayer('color_' + str(i), None, text_layer + 1,
+			(20, 20), (0, 0), 'top_left', color, 255)
+		current_color_sprite.add_state_from_sprite(sprite)
+
+	shift = np.array([resolution[0] - (width + size[0]) / 2, 10])
+	white = UniformLayer('square', context, text_layer,
+	 	size + 2, shift - 1, 'top_left', white_color, 255)
+	current_color_sprite.set_location(shift)
 	current_color_sprite.start()
-	
+
+	# TODO: add a class to handle centered text in a given area with margins
+	current_color_label = Text('text', context, text_layer,
+			'current', 'Times New Roman', 10)
+	current_color_label.set_location((resolution[0] - width + 10, 30))
+	current_color_label.start()
+	current_color_label = Text('text', context, text_layer,
+			'color', 'Times New Roman', 10)
+	current_color_label.set_location((resolution[0] -width + 15, 40))
+	current_color_label.start()
 
 	# collider manager
 	collider_manager = CollisionManager()
