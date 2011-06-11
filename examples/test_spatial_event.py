@@ -36,12 +36,13 @@ def create_bg_right(context, text, resolution):
 	return ChangeTextOnCollision(fsm, text, 'right')
 
 def create_player(context, resolution):
-	fsm = Player("player", context, layer=2, speed=120.)
-	fsm.load_frames_from_filenames('__default__', ['perso.png'],
+	player = AnimatedSprite("player", context, layer=2)
+	player.set_motion(KeyboardFullArrowsMotion(speed=120.))
+	player.load_frames_from_filenames('__default__', ['perso.png'],
 						'centered_bottom', 1)
-	fsm.set_location(np.array([resolution[0] / 2, resolution[0] / 2]))
-	fsm.start()
-	return fsm
+	player.set_location(np.array([resolution[0] / 2, resolution[0] / 2]))
+	player.start()
+	return player 
 
 #-------------------------------------------------------------------------------
 def main():

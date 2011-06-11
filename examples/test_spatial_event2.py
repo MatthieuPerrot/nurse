@@ -58,12 +58,13 @@ def create_colored_square(context, text, color, colorname, resolution):
 	return ManageCollision(fsm, text, colorname)
 
 def create_player(context, resolution):
-	fsm = Player("player", context, layer=2, speed=180.)
-	fsm.load_frames_from_filenames('__default__', ['perso.png'],
+	player = AnimatedSprite("player", context, layer=2)
+	player.set_motion(KeyboardFullArrowsMotion(speed=180.))
+	player.load_frames_from_filenames('__default__', ['perso.png'],
 						'centered_bottom', 1)
-	fsm.set_location(np.array([resolution[0] / 2, resolution[0] / 2]))
-	fsm.start()
-	return fsm
+	player.set_location(np.array([resolution[0] / 2, resolution[0] / 2]))
+	player.start()
+	return player 
 
 def create_nurse(context, text, resolution):
 	x, y = (resolution[0] / 4, resolution[1] / 4)
@@ -72,12 +73,15 @@ def create_nurse(context, text, resolution):
 	p3 = [x * 3, y * 3]
 	p4 = [x * 3, y]
 	path = np.array([p1, p2, p3, p4])
-	fsm = MovingSprite("nurse", context, layer=2, speed=120.)
+	motion = PathMotion(speed=120.)
+	motion.set_path(path)
+	fsm = AnimatedSprite("nurse", context, layer=2)
+	fsm.set_motion(motion)
 	fsm.load_frames_from_filenames('__default__', ['infirmiere.png'],
 							'centered_bottom', 1)
-	fsm.set_path(path)
-	fsm.start()
 	return ManageCollision(fsm, text, 'nurse')
+
+
 
 #-------------------------------------------------------------------------------
 def main():
