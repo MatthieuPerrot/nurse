@@ -1,6 +1,7 @@
 from ..base import Object
 from enum import Enum
 
+
 class EventLoop(Object):
 	def __init__(self, fps = 60.):
 		Object.__init__(self, 'event_loop')
@@ -20,7 +21,8 @@ class KeyBoardDevice(Object):
 	constants = Enum(*(['KEYDOWN', 'KEYUP'] + \
 		['K_' + chr(i) for i in range(ord('a'), ord('z') + 1)] + \
 		['K_' + str(i) for i in range(10)] + \
-		['K_UP', 'K_DOWN', 'K_LEFT', 'K_RIGHT', 'K_ESCAPE', 'K_SPACE', 'K_RETURN']+\
+		['K_UP', 'K_DOWN', 'K_LEFT', 'K_RIGHT',
+		'K_ESCAPE', 'K_SPACE', 'K_RETURN']+\
 		['UNKNOWN']))
 
 	def __init__(self):
@@ -33,6 +35,11 @@ class KeyBoardDevice(Object):
 		except:
 			print "warning: symbol '%d' is not handle" % symbol
 			return cls.constants.UNKNOWN
+
+
+class MouseDevice(Object):
+	def __init__(self):
+		Object.__init__(self, 'mouse_device')
 
 
 class ImageProxy(object):

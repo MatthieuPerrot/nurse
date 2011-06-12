@@ -1,6 +1,8 @@
 
 
-class Event(object): pass
+class Event(object):
+	MOUSE = 0
+	KEYBOARD = 1
 
 
 class SignalEvent(Event):

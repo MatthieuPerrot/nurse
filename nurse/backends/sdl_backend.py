@@ -1,9 +1,11 @@
 import sys
 import pygame
 
-from nurse.backends import EventLoop, KeyBoardDevice, GraphicEngine, ImageProxy
+from nurse.backends import EventLoop, KeyBoardDevice, MouseDevice, \
+					GraphicEngine, ImageProxy
 
 
+#-------------------------------------------------------------------------------
 class SdlEventLoop(EventLoop):
 	def __init__(self, fps = 60.):
 		EventLoop.__init__(self, fps)
@@ -30,6 +32,7 @@ class SdlEventLoop(EventLoop):
 		Config.get_keyboard_device().read_events()
 
 
+#-------------------------------------------------------------------------------
 class SdlKeyBoardDevice(KeyBoardDevice):
 	keysym_map = {}
 	for i in range(ord('a'), ord('z') + 1):
@@ -69,6 +72,15 @@ class SdlKeyBoardDevice(KeyBoardDevice):
 			self.emit((type, key))
 
 
+class SdlMouseDevice(MouseDevice):
+	def __init__(self):
+		MouseDevice.__init__(self)
+
+	def read_events(self):
+		#TODO: unimplemented
+		pass
+
+#-------------------------------------------------------------------------------
 class SdlImageProxy(ImageProxy):
 	def __init__(self, raw_image):
 		ImageProxy.__init__(self, raw_image)

@@ -103,7 +103,6 @@ class Object(object):
    :func:`nurse.state_machine.change_state`
 
 		'''
-
 		try:
 			async_connections = self._async_connections[signal]
 		except KeyError:

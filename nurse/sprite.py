@@ -42,7 +42,9 @@ class Sprite(StateMachine):
 	If true the motion is continued.
 		'''
 		if motion.get_context() is None:
-			motion.set_context(self.get_context())
+			context = self.get_context()
+			if context is not None:
+				motion.set_context(context)
 		self._motion = motion
 		motion.start()
 		if cont:

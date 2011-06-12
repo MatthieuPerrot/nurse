@@ -2,9 +2,9 @@
 import nurse.backends.sdl_backend
 import nurse.backends.pyglet_backend
 from nurse.backends.sdl_backend import SdlGraphicEngine, SdlEventLoop, \
-						SdlKeyBoardDevice
-from nurse.backends.pyglet_backend import PygletGraphicEngine, PygletEventLoop, \
-						PygletKeyBoardDevice
+					SdlKeyBoardDevice, SdlMouseDevice
+from nurse.backends.pyglet_backend import PygletGraphicEngine, PygletEventLoop,\
+					PygletKeyBoardDevice, PygletMouseDevice
 
 import pygame # FIXME: remove
 
@@ -21,23 +21,27 @@ class Config(object):
 
 	# internal data
 	default_context = None
-	graphic_backend_map = {\
-		'sdl' : (SdlGraphicEngine, (resolution, sdl_flags)),
-		'pyglet' : (PygletGraphicEngine, (resolution, caption))}
 	event_loop_backend_map = {'sdl' : SdlEventLoop,
 				'pyglet' : PygletEventLoop}
 	keyboard_backend_map = {'sdl' : SdlKeyBoardDevice,
 				'pyglet' : PygletKeyBoardDevice}
+	mouse_backend_map = {'sdl' : SdlMouseDevice,
+				'pyglet' : PygletMouseDevice}
 	graphic_backend_instance =  None
 	event_loop_backend_instance = None
 	keyboard_backend_instance = None
-	# FIXME : add devices (keyboard, mouse) backend
+	mouse_backend_instance = None
 
 	@classmethod
 	def init(cls):
 		# to avoid an import loop
 		from context import Context
 		cls.default_context = Context('default')
+		cls.graphic_backend_map = {\
+			'sdl' : (SdlGraphicEngine,
+				(cls.resolution, cls.sdl_flags)),
+			'pyglet' : (PygletGraphicEngine,
+				(cls.resolution, cls.caption))}
 
 		# instanciate backends
 		Config.get_graphic_engine()
@@ -82,3 +86,15 @@ class Config(object):
 				instance = cls.keyboard_backend_instance
 				instance.attach_window(win)
 		return cls.keyboard_backend_instance
+
+	@classmethod
+	def get_mouse_device(cls):
+		if cls.mouse_backend_instance is None:
+			c = cls.mouse_backend_map[cls.backend]
+			cls.mouse_backend_instance = c()
+			if cls.backend == 'pyglet':
+				gfx = cls.get_graphic_engine()
+				win = gfx.get_screen().get_raw_image()
+				instance = cls.mouse_backend_instance
+				instance.attach_window(win)
+		return cls.mouse_backend_instance

@@ -2,9 +2,13 @@ import sys
 import pyglet
 from pyglet.gl import *
 
-from nurse.backends import EventLoop, KeyBoardDevice, GraphicEngine, ImageProxy
+from nurse.backends import EventLoop, KeyBoardDevice, MouseDevice, \
+					GraphicEngine, ImageProxy
 from nurse.base import universe
+from nurse.events import Event
 
+
+#-------------------------------------------------------------------------------
 class PygletEventLoop(EventLoop):
 	def __init__(self, fps = 60.):
 		EventLoop.__init__(self, fps)
@@ -30,7 +34,13 @@ class PygletEventLoop(EventLoop):
 			e.start()
 
 
-class PygletKeyBoardDevice(KeyBoardDevice):
+#-------------------------------------------------------------------------------
+class PygletDevice(object):
+	def __init__(self):
+		self._win = None
+
+
+class PygletKeyBoardDevice(PygletDevice, KeyBoardDevice):
 	fullscreen = False
 	keysym_map = {}
 	for i in range(ord('a'), ord('z') + 1):
@@ -46,8 +56,8 @@ class PygletKeyBoardDevice(KeyBoardDevice):
 			KeyBoardDevice.constants.__getattribute__('K_' + key)
 
 	def __init__(self):
+		PygletDevice.__init__(self)
 		KeyBoardDevice.__init__(self)
-		self._win = None
 
 	def attach_window(self, win):
 		self._win = win
@@ -63,15 +73,62 @@ class PygletKeyBoardDevice(KeyBoardDevice):
 			self.fullscreen = not self.fullscreen
 		
 		key = self._get_key_from_symbol(symbol)
-		self.emit((KeyBoardDevice.constants.KEYDOWN, key))
+		self.emit(Event.KEYBOARD,
+			(KeyBoardDevice.constants.KEYDOWN, key))
 		return pyglet.event.EVENT_HANDLED
 
 	def on_key_release(self, symbol, modifiers):
 		key = self._get_key_from_symbol(symbol)
-		self.emit((KeyBoardDevice.constants.KEYUP, key))
+		self.emit(Event.KEYBOARD,
+			(KeyBoardDevice.constants.KEYUP, key))
 		return pyglet.event.EVENT_HANDLED
 
 
+class PygletMouseDevice(PygletDevice, MouseDevice):
+	def __init__(self):
+		PygletDevice.__init__(self)
+		KeyBoardDevice.__init__(self)
+
+	def attach_window(self, win):
+		self._win = win
+		self.on_mouse_motion = win.event(self.on_mouse_motion)
+		self.on_mouse_drag = win.event(self.on_mouse_drag)
+		self.on_mouse_press = win.event(self.on_mouse_press)
+		self.on_mouse_release = win.event(self.on_mouse_release)
+		self.on_mouse_scroll = win.event(self.on_mouse_scroll)
+		self.on_mouse_enter = win.event(self.on_mouse_enter)
+		self.on_mouse_leave = win.event(self.on_mouse_leave)
+
+	def on_mouse_motion(self, x, y, dx, dy):
+		self.emit(Event.MOUSE, (x, y, dx, dy))
+		return pyglet.event.EVENT_HANDLED
+
+	def on_mouse_drag(self, x, y, dx, dy, buttons, modifiers):
+		self.emit(Event.MOUSE, (x, y, dx, dy, buttons, modifiers))
+		return pyglet.event.EVENT_HANDLED
+
+	def on_mouse_press(self, x, y, button, modifiers):
+		self.emit(Event.MOUSE, (x, y, button, modifiers))
+		return pyglet.event.EVENT_HANDLED
+
+	def on_mouse_release(self, x, y, button, modifiers):
+		self.emit(Event.MOUSE, (x, y, button, modifiers))
+		return pyglet.event.EVENT_HANDLED
+
+	def on_mouse_scroll(self, x, y, scroll_x, scroll_y):
+		self.emit(Event.MOUSE, (x, y, scroll_x, scroll_y))
+		return pyglet.event.EVENT_HANDLED
+
+	def on_mouse_enter(self, x, y):
+		self.emit(Event.MOUSE, (x, y))
+		return pyglet.event.EVENT_HANDLED
+
+	def on_mouse_leave(self, x, y):
+		self.emit(Event.MOUSE, (x, y))
+		return pyglet.event.EVENT_HANDLED
+
+
+#-------------------------------------------------------------------------------
 class PygletImageProxy(ImageProxy):
 	def __init__(self, raw_image):
 		ImageProxy.__init__(self, raw_image)
