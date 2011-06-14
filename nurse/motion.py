@@ -1,6 +1,7 @@
 import numpy as np
 
 from base import Object
+from events import Event
 from state_machine import StateMachine, State
 from config import Config
 from backends import KeyBoardDevice
@@ -265,19 +266,19 @@ class KeyboardLeftRightArrowsMotion(KeyboardMotion):
 		self.set_initial_state(states[0])
 
 		# left
-		signal = (KeyBoardDevice.constants.KEYDOWN,
-				KeyBoardDevice.constants.K_LEFT)
+		signal = (Event.KEYBOARD, (KeyBoardDevice.constants.KEYDOWN,
+					KeyBoardDevice.constants.K_LEFT))
 		states[0].add_transition(context, signal, states[1])
-		signal = (KeyBoardDevice.constants.KEYUP,
-				KeyBoardDevice.constants.K_LEFT)
+		signal = (Event.KEYBOARD, (KeyBoardDevice.constants.KEYUP,
+				KeyBoardDevice.constants.K_LEFT))
 		states[1].add_transition(context, signal, states[0])
 
 		# right
-		signal = (KeyBoardDevice.constants.KEYDOWN,
-				KeyBoardDevice.constants.K_RIGHT)
+		signal = (Event.KEYBOARD, (KeyBoardDevice.constants.KEYDOWN,
+				KeyBoardDevice.constants.K_RIGHT))
 		states[0].add_transition(context, signal, states[2])
-		signal = (KeyBoardDevice.constants.KEYUP,
-				KeyBoardDevice.constants.K_RIGHT)
+		signal = (Event.KEYBOARD, (KeyBoardDevice.constants.KEYUP,
+				KeyBoardDevice.constants.K_RIGHT))
 		states[2].add_transition(context, signal, states[0])
 
 		# moves
@@ -305,35 +306,35 @@ class KeyboardFullArrowsMotion(KeyboardMotion):
 		self.set_initial_state(states[0])
 
 		# left
-		signal = (KeyBoardDevice.constants.KEYDOWN,
-				KeyBoardDevice.constants.K_LEFT)
+		signal = (Event.KEYBOARD, (KeyBoardDevice.constants.KEYDOWN,
+					KeyBoardDevice.constants.K_LEFT))
 		states[0].add_transition(context, signal, states[1])
-		signal = (KeyBoardDevice.constants.KEYUP,
-				KeyBoardDevice.constants.K_LEFT)
+		signal = (Event.KEYBOARD, (KeyBoardDevice.constants.KEYUP,
+					KeyBoardDevice.constants.K_LEFT))
 		states[1].add_transition(context, signal, states[0])
 
 		# up
-		signal = (KeyBoardDevice.constants.KEYDOWN,
-				KeyBoardDevice.constants.K_UP)
+		signal = (Event.KEYBOARD, (KeyBoardDevice.constants.KEYDOWN,
+					KeyBoardDevice.constants.K_UP))
 		states[0].add_transition(context, signal, states[3])
-		signal = (KeyBoardDevice.constants.KEYUP,
-				KeyBoardDevice.constants.K_UP)
+		signal = (Event.KEYBOARD, (KeyBoardDevice.constants.KEYUP,
+					KeyBoardDevice.constants.K_UP))
 		states[3].add_transition(context, signal, states[0])
 
 		# right
-		signal = (KeyBoardDevice.constants.KEYDOWN,
-				KeyBoardDevice.constants.K_RIGHT)
+		signal = (Event.KEYBOARD, (KeyBoardDevice.constants.KEYDOWN,
+					KeyBoardDevice.constants.K_RIGHT))
 		states[0].add_transition(context, signal, states[5])
-		signal = (KeyBoardDevice.constants.KEYUP,
-				KeyBoardDevice.constants.K_RIGHT)
+		signal = (Event.KEYBOARD, (KeyBoardDevice.constants.KEYUP,
+					KeyBoardDevice.constants.K_RIGHT))
 		states[5].add_transition(context, signal, states[0])
 
 		# down
-		signal = (KeyBoardDevice.constants.KEYDOWN,
-				KeyBoardDevice.constants.K_DOWN)
+		signal = (Event.KEYBOARD, (KeyBoardDevice.constants.KEYDOWN,
+					KeyBoardDevice.constants.K_DOWN))
 		states[0].add_transition(context, signal, states[7])
-		signal = (KeyBoardDevice.constants.KEYUP,
-				KeyBoardDevice.constants.K_DOWN)
+		signal = (Event.KEYBOARD, (KeyBoardDevice.constants.KEYUP,
+					KeyBoardDevice.constants.K_DOWN))
 		states[7].add_transition(context, signal, states[0])
 
 		# FIXME : add diagonal

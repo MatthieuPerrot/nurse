@@ -7,6 +7,7 @@ from nurse.sprite import *
 from nurse.context import Context, ContextManager
 from nurse.screen import *
 from nurse.game.dialog import *
+from nurse.events import *
 
 def create_bg(context):
 	fsm = StaticSprite('hospital', context, layer=0)
@@ -91,8 +92,8 @@ def main():
 
 	context_pause = Context("Pause", **properties_all_inactive)
 	context_fps = Context("fps", **properties_all_inactive)
-	signal_pause = (KeyBoardDevice.constants.KEYDOWN,
-				KeyBoardDevice.constants.K_p)
+	signal_pause = (Event.KEYBOARD, (KeyBoardDevice.constants.KEYDOWN,
+					KeyBoardDevice.constants.K_p))
 	signal_dialog_on = "dialog_on"
 	signal_dialog_off = "dialog_off"
 	context_ingame.add_transition(context_manager, signal_pause,

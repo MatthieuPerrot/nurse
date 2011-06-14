@@ -38,6 +38,9 @@ class KeyBoardDevice(Object):
 
 
 class MouseDevice(Object):
+	constants = Enum('MOTION', 'DRAG', 'PRESS', 'RELEASE',
+				'SCROLL', 'ENTER', 'LEAVE')
+
 	def __init__(self):
 		Object.__init__(self, 'mouse_device')
 

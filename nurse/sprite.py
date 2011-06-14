@@ -3,7 +3,7 @@ import numpy as np
 from base import Object
 from state_machine import StateMachine, State
 from config import Config
-from backends import KeyBoardDevice
+from backends import KeyBoardDevice, MouseDevice
 from motion import *
 
 

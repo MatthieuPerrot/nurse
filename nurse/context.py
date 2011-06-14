@@ -69,6 +69,8 @@ class ContextManager(StateMachine):
 		signal = '__all__'
 		Config.get_keyboard_device().connect(signal, self,
 						asynchronous=False)
+		Config.get_mouse_device().connect(signal, self,
+						asynchronous=False)
 
 	def display(self):
 		Config.get_graphic_engine().clean()

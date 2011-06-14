@@ -73,21 +73,21 @@ class PygletKeyBoardDevice(PygletDevice, KeyBoardDevice):
 			self.fullscreen = not self.fullscreen
 		
 		key = self._get_key_from_symbol(symbol)
-		self.emit(Event.KEYBOARD,
-			(KeyBoardDevice.constants.KEYDOWN, key))
+		self.emit((Event.KEYBOARD,
+			(KeyBoardDevice.constants.KEYDOWN, key)))
 		return pyglet.event.EVENT_HANDLED
 
 	def on_key_release(self, symbol, modifiers):
 		key = self._get_key_from_symbol(symbol)
-		self.emit(Event.KEYBOARD,
-			(KeyBoardDevice.constants.KEYUP, key))
+		self.emit((Event.KEYBOARD,
+			(KeyBoardDevice.constants.KEYUP, key)))
 		return pyglet.event.EVENT_HANDLED
 
 
 class PygletMouseDevice(PygletDevice, MouseDevice):
 	def __init__(self):
 		PygletDevice.__init__(self)
-		KeyBoardDevice.__init__(self)
+		MouseDevice.__init__(self)
 
 	def attach_window(self, win):
 		self._win = win
@@ -100,31 +100,36 @@ class PygletMouseDevice(PygletDevice, MouseDevice):
 		self.on_mouse_leave = win.event(self.on_mouse_leave)
 
 	def on_mouse_motion(self, x, y, dx, dy):
-		self.emit(Event.MOUSE, (x, y, dx, dy))
+		self.emit((Event.MOUSE, MouseDevice.constants.MOTION),
+							(x, y, dx, dy))
 		return pyglet.event.EVENT_HANDLED
 
 	def on_mouse_drag(self, x, y, dx, dy, buttons, modifiers):
-		self.emit(Event.MOUSE, (x, y, dx, dy, buttons, modifiers))
+		self.emit((Event.MOUSE, MouseDevice.constants.DRAG),
+				(x, y, dx, dy, buttons, modifiers))
 		return pyglet.event.EVENT_HANDLED
 
 	def on_mouse_press(self, x, y, button, modifiers):
-		self.emit(Event.MOUSE, (x, y, button, modifiers))
+		self.emit((Event.MOUSE, MouseDevice.constants.PRESS),
+					(x, y, button, modifiers))
 		return pyglet.event.EVENT_HANDLED
 
 	def on_mouse_release(self, x, y, button, modifiers):
-		self.emit(Event.MOUSE, (x, y, button, modifiers))
+		self.emit((Event.MOUSE, MouseDevice.constants.RELEASE),
+					(x, y, button, modifiers))
 		return pyglet.event.EVENT_HANDLED
 
 	def on_mouse_scroll(self, x, y, scroll_x, scroll_y):
-		self.emit(Event.MOUSE, (x, y, scroll_x, scroll_y))
+		self.emit((Event.MOUSE, MouseDevice.constants.SCROLL),
+					(x, y, scroll_x, scroll_y))
 		return pyglet.event.EVENT_HANDLED
 
 	def on_mouse_enter(self, x, y):
-		self.emit(Event.MOUSE, (x, y))
+		self.emit((Event.MOUSE, MouseDevice.constants.ENTER), (x, y))
 		return pyglet.event.EVENT_HANDLED
 
 	def on_mouse_leave(self, x, y):
-		self.emit(Event.MOUSE, (x, y))
+		self.emit((Event.MOUSE, MouseDevice.constants.LEAVE), (x, y))
 		return pyglet.event.EVENT_HANDLED
 
 

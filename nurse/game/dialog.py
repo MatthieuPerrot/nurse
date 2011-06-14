@@ -1,4 +1,5 @@
 from nurse.base import Object
+from nurse.events import Event
 from nurse.backends import KeyBoardDevice
 from nurse.state_machine import State
 from nurse.config import Config
@@ -97,20 +98,19 @@ class DialogListener(Object):
 		self.current_state = 0
 
 	def on_dialog_start(self, event):
-		signal = (KeyBoardDevice.constants.KEYDOWN,
-			KeyBoardDevice.constants.K_SPACE)
+		signal = (Event.KEYBOARD, (KeyBoardDevice.constants.KEYDOWN,
+					KeyBoardDevice.constants.K_SPACE))
 		self.context.set_visible (self.next, False)
 		self.context.connect(signal, self, 'on_fast_forward')
 
 	def on_dialog_finish(self, event):
 		if self.current_state == len(self.states) - 1:
 			return
-
-		signal = (KeyBoardDevice.constants.KEYDOWN,
-			KeyBoardDevice.constants.K_SPACE)
+		signal = (Event.KEYBOARD, (KeyBoardDevice.constants.KEYDOWN,
+					KeyBoardDevice.constants.K_SPACE))
 		self.context.disconnect(signal, self, 'on_fast_forward')
-		self.states[self.current_state].add_transition(self.context, signal, 
-				self.states[self.current_state + 1])
+		self.states[self.current_state].add_transition(self.context,
+				signal, self.states[self.current_state + 1])
 		self.current_state += 1
 		try:
 			self.context.set_visible (self.next, True)
@@ -174,8 +174,8 @@ class DialogContext(Context):
 		dialog.dl.context = self
 		dialog.dl.next = next
 
-		signal = (KeyBoardDevice.constants.KEYDOWN,
-			KeyBoardDevice.constants.K_SPACE)
+		signal = (Event.KEYBOARD, (KeyBoardDevice.constants.KEYDOWN,
+			KeyBoardDevice.constants.K_SPACE))
 		self.connect(signal, dialog.dl, 'on_fast_forward')
 		for state in states:
 			state.connect('dialog_state_terminated', dialog.dl, 'on_dialog_finish')

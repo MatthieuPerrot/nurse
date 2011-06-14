@@ -47,6 +47,7 @@ class Config(object):
 		Config.get_graphic_engine()
 		Config.get_event_loop()
 		Config.get_keyboard_device()
+		Config.get_mouse_device()
 
 	@classmethod
 	def read_config_file(cls):

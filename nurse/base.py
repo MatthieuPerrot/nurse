@@ -101,7 +101,6 @@ class Object(object):
    See Also:
 
    :func:`nurse.state_machine.change_state`
-
 		'''
 		try:
 			async_connections = self._async_connections[signal]
