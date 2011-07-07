@@ -10,6 +10,7 @@ path += [d for d in sys.path \
 	if not d.startswith('/home/mp210984/local/lib/python2.5/')]
 sys.path = path
 
+import OpenGL.raw.GL.ARB.multitexture
 from OpenGL.raw.GL import *
 from OpenGL.raw.GL import ARB
 from OpenGL.raw.GL.constants import *
@@ -35,8 +36,6 @@ class Sprite(object):
 		self._image2 = QtOpenGL.QGLWidget.convertToGLFormat(self._image)
 
 	def draw(self):
-		glEnable(GL_BLEND)
-		glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA)
 		glBindTexture(GL_TEXTURE_2D, self._textures[0])
 		bits = ctypes.c_voidp(int(self._image2.bits()))
 		glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA,
@@ -116,9 +115,11 @@ def load_ctypesgl_shader(filename):
 	fd = open(filename)
 
 	v_code = """
+	varying vec2 texture_coordinate; 
 	void main() {
 	gl_Position = gl_ModelViewProjectionMatrix * gl_Vertex;
 	gl_FrontColor = gl_BackColor = gl_Color;
+	texture_coordinate = vec2(gl_MultiTexCoord0);
 	}"""
 	v_ccode = ctypes.byref(ctypes.c_char_p(v_code))
 	f_code = ''.join(fd.readlines())
@@ -169,13 +170,21 @@ def load_ctypesgl_shader(filename):
 		sys.exit(1)
 	ARB.shader_objects.glUseProgramObjectARB(pgm)	
 
+	#ind = 0
+	#my_sampler_uniform_location = \
+	#	ARB.shader_objects.glGetUniformLocationARB(pgm,
+	#				"sampler")
+	#ARB.multitexture.glActiveTextureARB(GL_TEXTURE0 + ind)
+	#ARB.shader_objects.glUniform1iARB(my_sampler_uniform_location, ind)
+
+
 
 load_shader = load_ctypesgl_shader
 
 
 def InitGL(width, height):
 	check_extensions()
-	#load_shader('fragment.fs')
+	load_shader('fragment.fs')
 	glClearColor(0.0, 0.0, 0.0, 0.0)
 	glClearDepth(1.0)
 	glDepthFunc(GL_LESS)
@@ -234,7 +243,10 @@ def DrawGLScene():
 		draw_square([1.5, 0.0, 0.0], [0.5, 0., 1.], 7)
 		draw_square([1.5, 1.5, 0.0], [1., 0., 1.], 8)
 
+	glDisable(GL_BLEND)
 	bg.draw()
+	glEnable(GL_BLEND)
+	glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA)
 	sprite.draw()
 
 	glutSwapBuffers()
