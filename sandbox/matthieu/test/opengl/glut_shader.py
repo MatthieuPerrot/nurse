@@ -1,8 +1,8 @@
 #!/usr/bin/env python
 
 import sys
+import PIL.Image
 import numpy as np
-from PyQt4 import QtGui, QtOpenGL
 
 path = [d for d in sys.path \
 	if d.startswith('/home/mp210984/local/lib/python2.5/')]
@@ -30,14 +30,107 @@ pgm_gaussian_h = None
 pgm_gaussian_v = None
 pgm_perlin = None
 
-class Sprite(object):
+bg = sprite = None
+
+
+# image_backend = 'qt4'
+image_backend = 'pil'
+
+
+class ImageBase(object):
 	def __init__(self):
+		self._raw = None
+
+	def width(self):
+		raise NotImplementedError
+
+	def height(self):
+		raise NotImplementedError
+
+	def to_opengl(self):
+		raise NotImplementedError
+
+
+class ImageQtOpenGL(ImageBase):
+	def __init__(self, fname):
+		self._raw = QtGui.QImage()
+		self._raw.load(fname)
+
+	def width(self):
+		return self._raw.width()
+
+	def height(self):
+		return self._raw.height()
+	
+	def to_opengl(self):
+		raw_gl = QtOpenGL.QGLWidget.convertToGLFormat(self._raw)
+		return ctypes.c_voidp(int(raw_gl.bits()))
+
+
+class ImagePIL(ImageBase):
+	def __init__(self, fname):
+		self._raw = PIL.Image.open(fname)
+
+	def width(self):
+		return self._raw.size[0]
+
+	def height(self):
+		return self._raw.size[1]
+
+	def to_opengl(self):
+		return np.array(np.array(self._raw)[::-1, :], copy='true')
+
+
+if image_backend == 'qt4':
+	from PyQt4 import QtOpenGL
+	Image = ImageQtOpenGL
+
+elif image_backend == 'pil':
+	Image = ImagePIL
+
+class Texture(object):
+	def __init__(self):
+		self._texture = ctypes.cast((GLuint * 1)(), ctypes.POINTER(GLuint)) 
+		glGenTextures(1, self._texture)
+
+class Texture1D(Texture):
+	def __init__(self):
+		Texture.__init__(self)
+
+	def load_from_array(self, array):
+		glBindTexture(GL_TEXTURE_1D, self._texture[0])
+		glTexImage1D(GL_TEXTURE_1D, 0, GL_RGBA, len(array.ravel()),
+					0, GL_RGBA, GL_UNSIGNED_BYTE, array)
+		glTexParameteri(GL_TEXTURE_1D, GL_TEXTURE_MIN_FILTER, GL_LINEAR)
+		glTexParameteri(GL_TEXTURE_1D, GL_TEXTURE_MAG_FILTER, GL_LINEAR)
+		glTexParameterf(GL_TEXTURE_1D, GL_TEXTURE_WRAP_S, GL_CLAMP)
+		glTexParameterf(GL_TEXTURE_1D, GL_TEXTURE_WRAP_T, GL_CLAMP)
+		glBindTexture(GL_TEXTURE_1D, 0)
+
+
+class Texture2D(Texture):
+	def load_from_array(self, array):
+		shape = array.shape
+		glBindTexture(GL_TEXTURE_2D, self._texture[0])
+		glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA, shape[1], shape[0],
+					0, GL_RGBA, GL_UNSIGNED_BYTE, array)
+		glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR)
+		glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR)
+		glTexParameterf(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP)
+		glTexParameterf(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP)
+		glBindTexture(GL_TEXTURE_2D, 0)
+
+
+class Sprite(Texture2D):
+	def __init__(self, id=0):
+		Texture2D.__init__(self)
 		self._location = np.array([0., 0., 0.])
+		self._id = id
 
 	def new_empty(self, width, height, id=0):
-		tex = ctypes.cast((GLuint * 1)(), ctypes.POINTER(GLuint)) 
-		glGenTextures(1, tex);
-		glBindTexture(GL_TEXTURE_2D, tex[0])
+		self._width = width
+		self._height = height
+		glBindTexture(GL_TEXTURE_2D, self._texture[0])
 		glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR)
 		glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR)
 		glTexParameterf(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP)
@@ -46,63 +139,14 @@ class Sprite(object):
 		glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA8, width, height, 0,
 					     GL_RGBA, GL_UNSIGNED_BYTE, null)
 		glBindTexture(GL_TEXTURE_2D, 0)
-		self._texture = tex
-		self._width = width
-		self._height = height
-		self._id = id
 
-	def load_from_name(self, name, id=0):
-		self._image = QtGui.QImage()
-		self._id = id
-		self._texture = ctypes.cast((GLuint * 1)(),
-				ctypes.POINTER(GLuint)) 
-		glGenTextures(1, self._texture);
-		self._image.load(name)
-		self._image2 = QtOpenGL.QGLWidget.convertToGLFormat(self._image)
-		self._width = self._image2.width()
-		self._height = self._image2.height()
-
-		glBindTexture(GL_TEXTURE_2D, self._texture[0])
-		bits = ctypes.c_voidp(int(self._image2.bits()))
-		glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA,
-			self._width, self._height,
-			0, GL_RGBA, GL_UNSIGNED_BYTE, bits)
-		glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR)
-		glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR)
-		glTexParameterf(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP)
-		glTexParameterf(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP)
-		glBindTexture(GL_TEXTURE_2D, 0)
+	def load_from_name(self, fname):
+		img = Image(fname)
+		self._width = img.width()
+		self._height = img.height()
+		self.load_from_array(img.to_opengl())
 
 	def draw(self):
-		glBindTexture(GL_TEXTURE_2D, self._texture[0])
-		bits = ctypes.c_voidp(int(self._image2.bits()))
-		glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA,
-			self._width, self._height,
-			0, GL_RGBA, GL_UNSIGNED_BYTE, bits)
-		glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR)
-		glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR)
-		glTexParameterf(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP)
-		glTexParameterf(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP)
-
-		glPushMatrix()
-		glLoadIdentity()
-		glTranslatef(*self._location)
-		glPushName(self._id)
-		glBegin(GL_QUADS)                   
-		glTexCoord2f(0.0, 0.0)
-		glVertex3f(0.0, 0.0, 0.0)          
-		glTexCoord2f(1.0, 0.0)
-		glVertex3f(self._image.width(), 0.0, 0.0)         
-		glTexCoord2f(1.0, 1.0)
-		glVertex3f(self._image.width(), self._image.height(), 0.0)          
-		glTexCoord2f(0.0, 1.0)
-		glVertex3f(0.0, self._image.height(), 0.0)
-		glEnd()                             
-		glPopName()
-		glPopMatrix()
-		glBindTexture(GL_TEXTURE_2D, 0)
-
-	def draw2(self):
 		glBindTexture(GL_TEXTURE_2D, self._texture[0])
 		glPushMatrix()
 		glLoadIdentity()
@@ -179,14 +223,6 @@ def create_fbo(s_width, s_height):
 		ARB.framebuffer_object.GL_RENDERBUFFER, 0);
 
 	return fbo, fbo_sprite
-
-
-bg = Sprite()
-bg.load_from_name("../../../../data/pix/hopital.png", 1)
-bg.set_location(-3, -2, 0)
-sprite = Sprite()
-sprite.load_from_name("../../../../data/pix/perso.png", 2)
-sprite.set_location(0, 0, 1)
 
 
 def check_extensions():
@@ -287,10 +323,20 @@ fbo2 = None
 
 def InitGL(width, height):
 	global pgm_gw, pgm_gaussian_h, pgm_gaussian_v, pgm_perlin
+	global bg, sprite
+	global fbo, fbo_sprite
+	global fbo2, fbo_sprite2
+
 	check_extensions()
+	bg = Sprite(id=1)
+	bg.load_from_name("../../../../data/pix/hopital.png")
+	bg.set_location(-3, -2, 0)
+	sprite = Sprite(id=2)
+	sprite.load_from_name("../../../../data/pix/perso.png")
+	sprite.set_location(0, 0, 1)
 	pgm_gw = load_shader('fragment.fs')
-	pgm_perlin = load_shader('perlin.fs')
-	#pgm_perlin = load_shader('gaussian_horizontal.fs')
+	#pgm_perlin = load_shader('perlin.fs')
+	pgm_perlin = load_shader('gaussian_horizontal.fs')
 	#pgm_gaussian_v = load_shader('gaussian_vertical.fs')
 	#pgm_gaussian_h = load_shader('gaussian_horizontal.fs')
 	#pgm_gaussian_v = load_shader('gaussian_vertical_center.fs')
@@ -305,8 +351,6 @@ def InitGL(width, height):
 	glMatrixMode(GL_MODELVIEW)
 	glLoadIdentity()
 
-	global fbo, fbo_sprite
-	global fbo2, fbo_sprite2
 	s_width = glutGet(GLUT_WINDOW_WIDTH)
 	s_height = glutGet(GLUT_WINDOW_HEIGHT)
 	fbo, fbo_sprite = create_fbo(s_width, s_height)
@@ -346,7 +390,7 @@ def DrawGLScene():
 	#glClearColor(0., 0., 0., 0.)
 	#glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT)
 	#ARB.shader_objects.glUseProgramObjectARB(pgm_gaussian_h)
-	#fbo_sprite.draw2()
+	#fbo_sprite.draw()
 
 	ARB.framebuffer_object.glBindFramebuffer(\
 		ARB.framebuffer_object.GL_FRAMEBUFFER, 0)
@@ -354,8 +398,8 @@ def DrawGLScene():
 	glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT)
 	#ARB.shader_objects.glUseProgramObjectARB(pgm_gaussian_v)
 	ARB.shader_objects.glUseProgramObjectARB(pgm_perlin)
-	#fbo_sprite2.draw2()
-	fbo_sprite.draw2()
+	#fbo_sprite2.draw()
+	fbo_sprite.draw()
 	
 	glutSwapBuffers()
 
