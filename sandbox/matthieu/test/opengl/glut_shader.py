@@ -33,7 +33,7 @@ pgm_perlin = None
 bg = sprite = None
 
 
-# image_backend = 'qt4'
+#image_backend = 'qt4'
 image_backend = 'pil'
 
 
@@ -63,8 +63,8 @@ class ImageQtOpenGL(ImageBase):
 		return self._raw.height()
 	
 	def to_opengl(self):
-		raw_gl = QtOpenGL.QGLWidget.convertToGLFormat(self._raw)
-		return ctypes.c_voidp(int(raw_gl.bits()))
+		self._raw_gl = QtOpenGL.QGLWidget.convertToGLFormat(self._raw)
+		return ctypes.c_voidp(int(self._raw_gl.bits()))
 
 
 class ImagePIL(ImageBase):
@@ -82,7 +82,7 @@ class ImagePIL(ImageBase):
 
 
 if image_backend == 'qt4':
-	from PyQt4 import QtOpenGL
+	from PyQt4 import QtOpenGL, QtGui
 	Image = ImageQtOpenGL
 
 elif image_backend == 'pil':
@@ -107,13 +107,36 @@ class Texture1D(Texture):
 		glTexParameterf(GL_TEXTURE_1D, GL_TEXTURE_WRAP_T, GL_CLAMP)
 		glBindTexture(GL_TEXTURE_1D, 0)
 
+	def load_from_array(self, bits, width):
+		glBindTexture(GL_TEXTURE_1D, self._texture[0])
+		glTexImage1D(GL_TEXTURE_1D, 0, GL_RGBA, width,
+					0, GL_RGBA, GL_UNSIGNED_BYTE, bits)
+		glTexParameteri(GL_TEXTURE_1D, GL_TEXTURE_MIN_FILTER, GL_LINEAR)
+		glTexParameteri(GL_TEXTURE_1D, GL_TEXTURE_MAG_FILTER, GL_LINEAR)
+		glTexParameterf(GL_TEXTURE_1D, GL_TEXTURE_WRAP_S, GL_CLAMP)
+		glTexParameterf(GL_TEXTURE_1D, GL_TEXTURE_WRAP_T, GL_CLAMP)
+		glBindTexture(GL_TEXTURE_1D, 0)
+
 
 class Texture2D(Texture):
+	def __init__(self):
+		Texture.__init__(self)
+
 	def load_from_array(self, array):
 		shape = array.shape
 		glBindTexture(GL_TEXTURE_2D, self._texture[0])
 		glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA, shape[1], shape[0],
 					0, GL_RGBA, GL_UNSIGNED_BYTE, array)
+		glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR)
+		glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR)
+		glTexParameterf(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP)
+		glTexParameterf(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP)
+		glBindTexture(GL_TEXTURE_2D, 0)
+
+	def load_from_bits(self, bits, width, height):
+		glBindTexture(GL_TEXTURE_2D, self._texture[0])
+		glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA, width, height,
+					0, GL_RGBA, GL_UNSIGNED_BYTE, bits)
 		glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR)
 		glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR)
 		glTexParameterf(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP)
@@ -144,7 +167,7 @@ class Sprite(Texture2D):
 		img = Image(fname)
 		self._width = img.width()
 		self._height = img.height()
-		self.load_from_array(img.to_opengl())
+		self.load_from_bits(img.to_opengl(), self._width, self._height)
 
 	def draw(self):
 		glBindTexture(GL_TEXTURE_2D, self._texture[0])
