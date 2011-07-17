@@ -25,10 +25,10 @@ window = 0
 
 WIDTH, HEIGHT = 640, 480
 
-pgm_gw = None
-pgm_gaussian_h = None
-pgm_gaussian_v = None
-pgm_perlin = None
+pipeline_gw = None
+pipeline_gaussian_h = None
+pipeline_gaussian_v = None
+pipeline_perlin = None
 
 bg = sprite = None
 
@@ -174,7 +174,7 @@ class Sprite(Texture2D):
 		glPushMatrix()
 		glLoadIdentity()
 		glTranslatef(*self._location)
-		glPushName(self._id)
+		if self._id: glPushName(self._id)
 		glBegin(GL_QUADS)                   
 		glTexCoord2f(0.0, 0.0)
 		glVertex3f(0.0, 0.0, 0.0)          
@@ -185,7 +185,7 @@ class Sprite(Texture2D):
 		glTexCoord2f(0.0, 1.0)
 		glVertex3f(0.0, self._height, 0.0)
 		glEnd()                             
-		glPopName()
+		if self._id: glPopName()
 		glPopMatrix()
 		glBindTexture(GL_TEXTURE_2D, 0)
 
@@ -258,85 +258,132 @@ def check_extensions():
 		if ext not in extensions:
 			print "error: missing extension: %s" % ext
 			error = True
-	#if error: sys.exit(1)
+	if error: sys.exit(1)
 
 
-def load_shader(filename):
-	fd = open(filename)
-
-	v_code = """
-	varying vec2 texture_coordinate; 
-	void main() {
-	gl_Position = gl_ModelViewProjectionMatrix * gl_Vertex;
-	gl_FrontColor = gl_BackColor = gl_Color;
-	texture_coordinate = vec2(gl_MultiTexCoord0);
-	}"""
-	v_ccode = ctypes.byref(ctypes.c_char_p(v_code))
-	f_code = ''.join(fd.readlines())
-	f_ccode = ctypes.byref(ctypes.c_char_p(f_code))
-	
-	v_shader = ARB.shader_objects.glCreateShaderObjectARB(\
-					GL_VERTEX_SHADER)
-	f_shader = ARB.shader_objects.glCreateShaderObjectARB(\
-					GL_FRAGMENT_SHADER)
-	length = ctypes.c_int(-1)
-	a = ARB.shader_objects.glShaderSourceARB.argtypes
-	
-	ARB.shader_objects.glShaderSourceARB.argtypes = (a[0],
-		a[1], ctypes.POINTER(ctypes.c_char_p), a[3])
-	ARB.shader_objects.glShaderSourceARB(v_shader, 1,
-					v_ccode, ctypes.byref(length))
-	ARB.shader_objects.glShaderSourceARB(f_shader, 1,
-					f_ccode, ctypes.byref(length))
-
-	ARB.shader_objects.glCompileShaderARB(v_shader)
-	ARB.shader_objects.glCompileShaderARB(f_shader)
-
-	compiled = ctypes.cast((GLint * 1)(), ctypes.POINTER(GLint))
-	ARB.shader_objects.glGetObjectParameterivARB(f_shader,
-					GL_COMPILE_STATUS, compiled)
-	if not compiled[0]:
-		blen = ctypes.cast((GLint * 1)(), ctypes.POINTER(GLint))
-		slen = ctypes.cast((GLint * 1)(), ctypes.POINTER(GLint))
-		ARB.shader_objects.glGetObjectParameterivARB(f_shader,
-			GL_INFO_LOG_LENGTH , blen)
-		log = ctypes.create_string_buffer(blen[0])
-		if blen[0] > 1:
-			ARB.shader_objects.glGetInfoLogARB(\
-					f_shader, blen[0], slen, log)
-			print "log = \n", log[:blen[0]]
-		sys.exit(1)
-
-	pgm = ARB.shader_objects.glCreateProgramObjectARB()
-	ARB.shader_objects.glAttachObjectARB(pgm, v_shader)
-	ARB.shader_objects.glAttachObjectARB(pgm, f_shader)
-	ARB.shader_objects.glLinkProgramARB(pgm)
-
-	linked = ctypes.cast((GLint * 1)(), ctypes.POINTER(GLint))
-	ARB.shader_objects.glGetObjectParameterivARB(pgm,
-			GL_LINK_STATUS, linked)
-	if linked[0] == GL_FALSE:
-		print "error: link"
-		blen = ctypes.cast((GLint * 1)(), ctypes.POINTER(GLint))
-		slen = ctypes.cast((GLint * 1)(), ctypes.POINTER(GLint))
-		ARB.shader_objects.glGetObjectParameterivARB(pgm,
-			GL_INFO_LOG_LENGTH , blen)
-		log = ctypes.create_string_buffer(blen[0])
-		if blen[0] > 1:
-			ARB.shader_objects.glGetInfoLogARB(\
-					pgm, blen[0], slen, log)
-			print "log = \n", log[:blen[0]]
-		sys.exit(1)
+#-------------------------------------------------------------------------------
+a = ARB.shader_objects.glShaderSourceARB.argtypes
+ARB.shader_objects.glShaderSourceARB.argtypes = (a[0],
+	a[1], ctypes.POINTER(ctypes.c_char_p), a[3])
 
 
-	return pgm
+class Shader(object):
+	def _load_shader_from_filename(self, filename, shader):
+		fd = open(filename)
+		code = ''.join(fd.readlines())
+		self._load_shader_from_str(code, shader)
 
-	#ind = 0
-	#my_sampler_uniform_location = \
-	#	ARB.shader_objects.glGetUniformLocationARB(pgm,
-	#				"sampler")
-	#ARB.multitexture.glActiveTextureARB(GL_TEXTURE0 + ind)
-	#ARB.shader_objects.glUniform1iARB(my_sampler_uniform_location, ind)
+	def _load_shader_from_str(self, code, shader):
+		c_code = ctypes.byref(ctypes.c_char_p(code))
+		length = ctypes.c_int(-1)
+		ARB.shader_objects.glShaderSourceARB(shader, 1,
+				c_code, ctypes.byref(length))
+		ARB.shader_objects.glCompileShaderARB(shader)
+
+		compiled = ctypes.cast((GLint * 1)(), ctypes.POINTER(GLint))
+		ARB.shader_objects.glGetObjectParameterivARB(shader,
+						GL_COMPILE_STATUS, compiled)
+		if not compiled[0]:
+			print "error: compiling shader:"
+			blen = ctypes.cast((GLint * 1)(), ctypes.POINTER(GLint))
+			slen = ctypes.cast((GLint * 1)(), ctypes.POINTER(GLint))
+			ARB.shader_objects.glGetObjectParameterivARB(shader,
+				GL_INFO_LOG_LENGTH , blen)
+			log = ctypes.create_string_buffer(blen[0])
+			if blen[0] > 1:
+				ARB.shader_objects.glGetInfoLogARB(\
+						shader, blen[0], slen, log)
+				print log[:blen[0]]
+			raise RuntimeError
+
+	def load_default(self):
+		cls = self.__class__
+		self._load_shader_from_str(cls.default_code, self._id)
+
+
+class VertexShader(Shader):
+	default_code = """
+		varying vec2 texture_coordinate; 
+		void main() {
+		gl_Position = gl_ModelViewProjectionMatrix * gl_Vertex;
+		gl_FrontColor = gl_BackColor = gl_Color;
+		texture_coordinate = vec2(gl_MultiTexCoord0);
+		}"""
+
+	def __init__(self):
+		Shader.__init__(self)
+		self._id = ARB.shader_objects.glCreateShaderObjectARB(\
+							GL_VERTEX_SHADER)
+
+	def load_from_file(self, fname):
+		self._load_shader_from_filename(fname, self._id)
+
+
+class FragmentShader(Shader):
+	default_code = """
+		varying vec2 texture_coordinate; 
+		uniform sampler2D sampler;
+		void main(void) {
+		gl_FragColor = texture2D(sampler, texture_coordinate.xy);
+		}"""
+
+	def __init__(self):
+		Shader.__init__(self)
+		self._id = ARB.shader_objects.glCreateShaderObjectARB(\
+						GL_FRAGMENT_SHADER)
+	def load_from_file(self, fname):
+		self._load_shader_from_filename(fname, self._id)
+
+
+class OpenglPipeline(object):
+	def __init__(self):
+		self._vertex_shader = VertexShader()
+		self._fragment_shader = FragmentShader()
+		self._pgm = ARB.shader_objects.glCreateProgramObjectARB()
+
+	def load_from_file(self, v_fname=None, f_fname=None):
+		if v_fname is None:
+			self._vertex_shader.load_default()
+		else: self._vertex_shader.load_from_file(v_fname)
+		if f_fname is None:
+			self._fragment_shader.load_default()
+		else: self._fragment_shader.load_from_file(f_fname)
+		
+		ARB.shader_objects.glAttachObjectARB(self._pgm,
+					self._vertex_shader._id)
+		ARB.shader_objects.glAttachObjectARB(self._pgm,
+					self._fragment_shader._id)
+		ARB.shader_objects.glLinkProgramARB(self._pgm)
+
+		linked = ctypes.cast((GLint * 1)(), ctypes.POINTER(GLint))
+		ARB.shader_objects.glGetObjectParameterivARB(self._pgm,
+						GL_LINK_STATUS, linked)
+		if linked[0] == GL_FALSE:
+			print "error: linking shaders:"
+			blen = ctypes.cast((GLint * 1)(), ctypes.POINTER(GLint))
+			slen = ctypes.cast((GLint * 1)(), ctypes.POINTER(GLint))
+			ARB.shader_objects.glGetObjectParameterivARB(self._pgm,
+				GL_INFO_LOG_LENGTH , blen)
+			log = ctypes.create_string_buffer(blen[0])
+			if blen[0] > 1:
+				ARB.shader_objects.glGetInfoLogARB(\
+					self._pgm, blen[0], slen, log)
+				print log[:blen[0]]
+			raise RuntimeError
+
+	def select(self):
+		ARB.shader_objects.glUseProgramObjectARB(self._pgm)
+
+	@classmethod
+	def select_default(cls):
+		ARB.shader_objects.glUseProgramObjectARB(0)
+
+
+#-------------------------------------------------------------------------------
+def load_shaders(filename):
+	gl_pipeline = OpenglPipeline()
+	gl_pipeline.load_from_file(None, filename)
+	return gl_pipeline
 
 
 fbo_sprite = None
@@ -345,7 +392,8 @@ fbo = None
 fbo2 = None
 
 def InitGL(width, height):
-	global pgm_gw, pgm_gaussian_h, pgm_gaussian_v, pgm_perlin
+	global pipeline_gw, pipeline_gaussian_h, pipeline_gaussian_v
+	global pipeline_perlin
 	global bg, sprite
 	global fbo, fbo_sprite
 	global fbo2, fbo_sprite2
@@ -357,13 +405,13 @@ def InitGL(width, height):
 	sprite = Sprite(id=2)
 	sprite.load_from_name("../../../../data/pix/perso.png")
 	sprite.set_location(0, 0, 1)
-	pgm_gw = load_shader('fragment.fs')
-	#pgm_perlin = load_shader('perlin.fs')
-	pgm_perlin = load_shader('gaussian_horizontal.fs')
-	#pgm_gaussian_v = load_shader('gaussian_vertical.fs')
-	#pgm_gaussian_h = load_shader('gaussian_horizontal.fs')
-	#pgm_gaussian_v = load_shader('gaussian_vertical_center.fs')
-	#pgm_gaussian_h = load_shader('gaussian_horizontal_center.fs')
+	pipeline_gw = load_shaders('fragment.fs')
+	#pipeline_perlin = load_shaders('perlin.fs')
+	pipeline_perlin = load_shaders('gaussian_horizontal.fs')
+	#pipeline_gaussian_v = load_shaders('gaussian_vertical.fs')
+	#pipeline_gaussian_h = load_shaders('gaussian_horizontal.fs')
+	#pipeline_gaussian_v = load_shaders('gaussian_vertical_center.fs')
+	#pipeline_gaussian_h = load_shaders('gaussian_horizontal_center.fs')
 	glClearColor(0.0, 0.0, 0.0, 0.0)
 	glClearDepth(1.0)
 	glDepthFunc(GL_LESS)
@@ -401,7 +449,7 @@ def DrawGLScene():
 	glClearColor(0., 0., 0., 0.)
 	glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT)
 
-	ARB.shader_objects.glUseProgramObjectARB(pgm_gw)
+	pipeline_gw.select()
 	glDisable(GL_BLEND)
 	bg.draw()
 	glEnable(GL_BLEND)
@@ -412,15 +460,15 @@ def DrawGLScene():
 	#	ARB.framebuffer_object.GL_FRAMEBUFFER, fbo2[0])
 	#glClearColor(0., 0., 0., 0.)
 	#glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT)
-	#ARB.shader_objects.glUseProgramObjectARB(pgm_gaussian_h)
+	#pipeline_gaussian_h.select()
 	#fbo_sprite.draw()
 
 	ARB.framebuffer_object.glBindFramebuffer(\
 		ARB.framebuffer_object.GL_FRAMEBUFFER, 0)
 	glClearColor(0., 0., 0., 0.)
 	glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT)
-	#ARB.shader_objects.glUseProgramObjectARB(pgm_gaussian_v)
-	ARB.shader_objects.glUseProgramObjectARB(pgm_perlin)
+	#pipeline_gaussian_v.select()
+	pipeline_perlin.select()
 	#fbo_sprite2.draw()
 	fbo_sprite.draw()
 	

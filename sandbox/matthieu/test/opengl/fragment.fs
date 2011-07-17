@@ -1,15 +1,13 @@
 varying vec2 texture_coordinate;
 uniform sampler2D sampler;
 vec4 tex;
-uniform vec3 mean;
-const vec3 white = vec3(255., 250., 192.) / 255;
+vec3 mean;
+const vec3 white = vec3(255., 250., 192.) / 255.;
 const int width = 640;
 const int height = 480;
 
 void main(void)
 {
-	//gl_FragColor = vec4(gl_Color.r, gl_Color.g, gl_Color.b, 1.0);
-	//gl_FragColor = (gl_Color.r + gl_Color.g + gl_Color.b) / 3.;
 	tex = texture2D(sampler, texture_coordinate.xy);
 
 	if (gl_FragCoord.x > (width / 2.))
@@ -21,7 +19,8 @@ void main(void)
 		}
 		else // sepia tone
 		{
-			if (gl_FragCoord.x > (3. * width / 4.))// method M$
+			// method M$
+			if (gl_FragCoord.x > (3. * width / 4.))
 			{
 				gl_FragColor = clamp(vec4(
 				tex.r * 0.393 + tex.g * 0.769 + tex.b * 0.189,
