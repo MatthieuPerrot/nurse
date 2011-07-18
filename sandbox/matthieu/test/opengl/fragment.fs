@@ -12,6 +12,7 @@ void main(void)
 
 	if (gl_FragCoord.x > (width / 2.))
 	{
+		//float grey = color.r*0.299 + color.g*0.587 + color.b*0.114;
 		mean = vec3((tex.r + tex.g + tex.b) / 3.);
 		if (gl_FragCoord.y > (height / 2.)) // grey tone
 		{

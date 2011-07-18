@@ -380,7 +380,7 @@ class OpenglPipeline(object):
 
 
 #-------------------------------------------------------------------------------
-def load_shaders(filename):
+def load_pipeline(filename):
 	gl_pipeline = OpenglPipeline()
 	gl_pipeline.load_from_file(None, filename)
 	return gl_pipeline
@@ -405,13 +405,13 @@ def InitGL(width, height):
 	sprite = Sprite(id=2)
 	sprite.load_from_name("../../../../data/pix/perso.png")
 	sprite.set_location(0, 0, 1)
-	pipeline_gw = load_shaders('fragment.fs')
-	#pipeline_perlin = load_shaders('perlin.fs')
-	pipeline_perlin = load_shaders('gaussian_horizontal.fs')
-	#pipeline_gaussian_v = load_shaders('gaussian_vertical.fs')
-	#pipeline_gaussian_h = load_shaders('gaussian_horizontal.fs')
-	#pipeline_gaussian_v = load_shaders('gaussian_vertical_center.fs')
-	#pipeline_gaussian_h = load_shaders('gaussian_horizontal_center.fs')
+	pipeline_gw = load_pipeline('fragment.fs')
+	#pipeline_perlin = load_pipeline('perlin.fs')
+	pipeline_perlin = load_pipeline('gaussian_horizontal.fs')
+	#pipeline_gaussian_v = load_pipeline('gaussian_vertical.fs')
+	#pipeline_gaussian_h = load_pipeline('gaussian_horizontal.fs')
+	#pipeline_gaussian_v = load_pipeline('gaussian_vertical_center.fs')
+	#pipeline_gaussian_h = load_pipeline('gaussian_horizontal_center.fs')
 	glClearColor(0.0, 0.0, 0.0, 0.0)
 	glClearDepth(1.0)
 	glDepthFunc(GL_LESS)
