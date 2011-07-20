@@ -91,7 +91,8 @@ elif image_backend == 'pil':
 
 class Texture(object):
 	def __init__(self):
-		self._texture = ctypes.cast((GLuint * 1)(), ctypes.POINTER(GLuint)) 
+		self._texture = ctypes.cast((GLuint * 1)(),
+					ctypes.POINTER(GLuint)) 
 		glGenTextures(1, self._texture)
 
 class Texture1D(Texture):
@@ -236,9 +237,9 @@ def create_fbo(s_width, s_height):
 	# check FBO status
 	status = ARB.framebuffer_object.glCheckFramebufferStatus(\
 			ARB.framebuffer_object.GL_FRAMEBUFFER)
-	if (status != ARB.framebuffer_object.GL_FRAMEBUFFER):
+	if (status != ARB.framebuffer_object.GL_FRAMEBUFFER_COMPLETE):
 		print "error: with FBO check"
-		#sys.exit(1)
+		sys.exit(1)
 
 	# switch back to window-system-provided framebuffer
 	ARB.framebuffer_object.glBindFramebuffer(\
