@@ -16,7 +16,6 @@ from OpenGL.raw.GL import *
 from OpenGL.raw.GL import ARB
 from OpenGL.raw.GL.constants import *
 from OpenGL.GL import glBegin, glEnd
-#from OpenGL.GL import shaders
 from OpenGL.GLUT import *
 from OpenGL.GLU import *
 
@@ -33,8 +32,8 @@ pipeline_perlin = None
 bg = sprite = None
 
 
-#image_backend = 'qt4'
-image_backend = 'pil'
+image_backend = 'qt4'
+#image_backend = 'pil'
 
 
 class ImageBase(object):
@@ -78,7 +77,9 @@ class ImagePIL(ImageBase):
 		return self._raw.size[1]
 
 	def to_opengl(self):
-		return np.array(np.array(self._raw)[::-1, :], copy='true')
+		self._raw_gl = np.array(np.array(self._raw)[::-1, :],
+							copy='true')
+		return self._raw_gl.ctypes
 
 
 if image_backend == 'qt4':
@@ -136,7 +137,7 @@ class Texture2D(Texture):
 	def load_from_bits(self, bits, width, height):
 		glBindTexture(GL_TEXTURE_2D, self._texture[0])
 		glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA, width, height,
-					0, GL_RGBA, GL_UNSIGNED_BYTE, bits)
+				0, GL_RGBA, GL_UNSIGNED_BYTE, bits)
 		glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR)
 		glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR)
 		glTexParameterf(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP)
