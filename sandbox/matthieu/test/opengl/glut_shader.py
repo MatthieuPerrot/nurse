@@ -1,14 +1,7 @@
 #!/usr/bin/env python
 
 import sys
-import PIL.Image
 import numpy as np
-
-path = [d for d in sys.path \
-	if d.startswith('/home/mp210984/local/lib/python2.5/')]
-path += [d for d in sys.path \
-	if not d.startswith('/home/mp210984/local/lib/python2.5/')]
-sys.path = path
 
 import OpenGL.raw.GL.ARB.multitexture
 import OpenGL.raw.GL.ARB.framebuffer_object
@@ -87,6 +80,7 @@ if image_backend == 'qt4':
 	Image = ImageQtOpenGL
 
 elif image_backend == 'pil':
+	import PIL.Image
 	Image = ImagePIL
 
 class Texture(object):
