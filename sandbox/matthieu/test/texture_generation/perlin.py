@@ -33,6 +33,15 @@ def tangent_vec(x, y):
 	if s != 0: v /= s
 	return v
 
+def circular_wave_derivative(x, y, w=1.):
+	'''
+    f(r, theta) = cos(r) # polar coordinates
+	'''
+	r = np.sqrt(x ** 2 + y ** 2)
+	if r:
+		p = np.array(x, y)
+		return -np.sin(w * r) * 2 * w * p / r
+	else:	return np.array([0., 0.])
 
 def perlin_noise(x, y):
 	qx0 = np.floor(x);
@@ -53,7 +62,12 @@ def perlin_noise(x, y):
 	ty1 = ty0 - 1
 
 	# Compute the dot-product between the vectors and the gradients
-	#q00, q01, q10, q11 = 0, 1, 2, 3
+	q00, q01, q10, q11 = 0, 1, 2, 3
+	#G[0] = circular_wave_derivative(qx0, qy0)
+	#G[1] = circular_wave_derivative(qx0, qy1)
+	#G[2] = circular_wave_derivative(qx1, qy0)
+	#G[3] = circular_wave_derivative(qx1, qy1)
+
 	#q00, q01, q10, q11 = 0, 0, 0, 0
 	#G[0, 0] = 1
 	#G[0, 1] = -1
@@ -71,11 +85,13 @@ def perlin_noise(x, y):
 	# bi-cubic interpolation between v_0 and v_1 at x
 	# v_x = v_0 - (3x^2 - 2x^3) * (v_0 - v_1).
 	# x axis interpolation
-	wx = (3 - 2 * tx0) * tx0 ** 2
+	#wx = (3 - 2 * tx0) * tx0 ** 2
+	wx = (10. + (6 * tx0 - 15) * tx0) * tx0 ** 3
 	v0 = v00 - wx * (v00 - v01)
 	v1 = v10 - wx * (v10 - v11)
 	# y axis interpolation
-	wy = (3 - 2 * ty0) * ty0 ** 2
+	#wy = (3 - 2 * ty0) * ty0 ** 2
+	wy = (10. + (6 * ty0 - 15) * ty0) * ty0 ** 3
 	v = v0 - wy * (v0 - v1)
 
 	return v
@@ -148,11 +164,11 @@ def map_image(filename, scaling = np.array([10., 10.]), amp=1.):
 
 
 resolution = np.array([200., 200.])
-#V = map_perlin_noise(resolution, scaling=np.array([11., 11.]))
+V = map_perlin_noise(resolution, scaling=np.array([11., 11.]))
 #V = map_fract(resolution, scaling=np.array([4., 4.]), iter_n=8)
 #V = map_magma(resolution, scaling=np.array([4., 4.]), iter_n=8)
 #V = map_marble(resolution, scaling=np.array([10., 10.]), iter_n=8)
-V = map_image('../../../../data/pix/hopital.png', np.array([20., 20.]), amp=0.5)
+#V = map_image('../../../../data/pix/hopital.png', np.array([20., 20.]), amp=0.5)
 
 pl.hot()
 pl.imshow(V, interpolation='nearest')
