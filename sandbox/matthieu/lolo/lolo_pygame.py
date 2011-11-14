@@ -17,7 +17,7 @@ import numpy as np
 # idee 1 : layer statique :
 #          - on blit tous les tiles a l'init dans un sdl surface / texture
 #          - au rendu, seule la sdl surface / texture est blitee
-# idee 2 : lier un/des sprite(s) [3x3 cases] à une représentation du morpion
+# idee 2 : lier un/des sprite(s) [3x3 cases] a une representation du morpion
 # idee 3 : sdl -> opengl
 # idee 4 : introduire Qt4
 
