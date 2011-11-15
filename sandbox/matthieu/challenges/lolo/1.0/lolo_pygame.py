@@ -23,6 +23,7 @@ import numpy as np
 
 #-------------------------------------------------------------------------------
 black_color = 0, 0, 0
+prefix = "../common_data/"
 
 #-------------------------------------------------------------------------------
 tiles_img_files = {\
@@ -44,7 +45,7 @@ tiles_sdl_img = {}
 
 def load_tiles():
     for i, (k, filename) in enumerate(tiles_img_files.items()):
-        tiles_sdl_img[i] = pygame.image.load(filename).convert_alpha()
+        tiles_sdl_img[i] = pygame.image.load(prefix + filename).convert_alpha()
         tiles_repr_to_ind[k] = i
 
 
@@ -375,7 +376,7 @@ def main():
     pygame.font.init()
     pygame.init()
 
-    pygame.mixer.music.load('lolo.ogg')
+    pygame.mixer.music.load(prefix + 'lolo.ogg')
     pygame.mixer.music.play(-1)
 
     # init screen and tiles
@@ -392,7 +393,7 @@ def main():
     free_layer = FreeLayer(coordinate_system)
     map.add_layer(free_layer)
     player = Player(map, [1, 2])
-    player.load_from_file("player.png")
+    player.load_from_file(prefix + "player.png")
     player.obstacle_handler = ObstacleHandlerFromLayer(map.layers[0],
 		    free_tiles=[tiles_repr_to_ind[':']])
     free_layer.add_sprite(player)
