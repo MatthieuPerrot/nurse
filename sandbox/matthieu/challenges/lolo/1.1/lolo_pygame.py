@@ -1,6 +1,6 @@
 #!/usr/bin/env python
 
-import sys, os, re
+import sys, os, re, time
 import pygame
 import numpy as np
 
@@ -131,9 +131,15 @@ class Map(object):
     def __init__(self, filename):
         self.layers = [] # one tiles map per layer
         self.load_from_file(filename)
+        # sprites which have to be updated
+        self.sprites_to_be_updated = []
 
     def add_layer(self, layer):
         self.layers.append(layer)
+
+    def update(self):
+        for sprite in self.sprites_to_be_updated:
+            sprite.update()
 
     def load_from_file(self, filename):
         fd = open(filename)
@@ -324,6 +330,9 @@ class Sprite(object):
     def set_position(self, position):
         self.position = np.asarray(position)
 
+    def update(self):
+        pass
+
 
 class Screen(object):
     def __init__(self, resolution):
@@ -344,9 +353,38 @@ class Player(Sprite):
     def __init__(self, map, position=(0, 0),
                        coordinate_system=default_coordinate_system):
         Sprite.__init__(self, map, position, coordinate_system)
+	self.speed = 0.1 # tiles per seconds
         self.carrying_an_object = False
+	self.last_time_point = None
+        self.last_position = None
+	self.move_actions = []
+
+    def update(self):
+        '''
+    handle current actions and update position/logic
+        '''
+	# FIXME : check speed of diag vs hor/vert mvt
+	#         maybe the norm of direction has to be used
+        current_time = time.time()
+	delta_time = current_time - self.last_time_point 
+	norm_time = delta_time * self.speed
+	while norm_time > 1: # go to next checkpoint
+		self.last_position += self.direction
+		self.last_time_point += 1. / speed
+		delta_time -= self.last_time_point
+		norm_time = delta_time * self.speed
+	delta_position = norm_time * self.direction
+	self.position = self.last_position + delta_position
+            
+    def add_move_action(direction):
+        self.last_time_point = time.time()
+        self.move_actions.append(direction)
+        
     
-    def action(self):
+    def take_or_put(self):
+        '''
+    try to take or put an object in the current tile
+	'''
         box = tiles_repr_to_ind['X']
         heart = tiles_repr_to_ind['C']
         void = tiles_repr_to_ind['.']
@@ -388,15 +426,15 @@ def read_event(player):
                 if event.key == pygame.K_q or event.key == pygame.K_ESCAPE:
                     sys.exit(0)
                 if event.key == pygame.K_UP:
-                    player.move_delta(delta[0])
+                    player.add_move_action(delta[0])
                 elif event.key == pygame.K_DOWN:
-                    player.move_delta(delta[1])
+                    player.add_move_action(delta[1])
                 elif event.key == pygame.K_LEFT:
-                    player.move_delta(delta[2])
+                    player.add_move_action(delta[2])
                 elif event.key == pygame.K_RIGHT:
-                    player.move_delta(delta[3])
+                    player.add_move_action(delta[3])
                 elif event.key == pygame.K_SPACE:
-                    player.action()
+                    player.take_or_put()
 
     
 def main():
@@ -428,12 +466,14 @@ def main():
     player.obstacle_handler = ObstacleHandlerFromLayer(map.layers[0],
                     free_tiles=[tiles_repr_to_ind[':']])
     free_layer.add_sprite(player)
+    map.active_sprites.append([player])
 
     game.quest = Quest()
 
     # main loop
     while not game.quest.end:
         read_event(player)
+	map.update()
         screen.render(map)
 
     # clean and quit
