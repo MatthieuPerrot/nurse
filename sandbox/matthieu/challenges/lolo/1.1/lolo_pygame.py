@@ -307,6 +307,7 @@ class Sprite(object):
                        coordinate_system=default_coordinate_system):
         self.layer = layer
         self.position = np.asarray(position)
+        self.last_position = np.copy(self.position)
         self.sdl_img = None
         self.obstacle_handler = default_obstacle_handler
 
@@ -353,38 +354,55 @@ class Player(Sprite):
     def __init__(self, map, position=(0, 0),
                        coordinate_system=default_coordinate_system):
         Sprite.__init__(self, map, position, coordinate_system)
-	self.speed = 0.1 # tiles per seconds
+        self.speed = 0.1 # tiles per seconds
         self.carrying_an_object = False
-	self.last_time_point = None
-        self.last_position = None
-	self.move_actions = []
+        self.last_time_point = None
+        self.move_actions = []
+        self.directions_stack = []
 
     def update(self):
         '''
     handle current actions and update position/logic
         '''
-	# FIXME : check speed of diag vs hor/vert mvt
-	#         maybe the norm of direction has to be used
+        # FIXME : check speed of diag vs hor/vert mvt
+        #         maybe the norm of direction has to be used
+        if len(self.directions_stack) == 0: return
         current_time = time.time()
-	delta_time = current_time - self.last_time_point 
-	norm_time = delta_time * self.speed
-	while norm_time > 1: # go to next checkpoint
-		self.last_position += self.direction
-		self.last_time_point += 1. / speed
-		delta_time -= self.last_time_point
-		norm_time = delta_time * self.speed
-	delta_position = norm_time * self.direction
-	self.position = self.last_position + delta_position
+        delta_time = current_time - self.last_time_point 
+        norm_time = delta_time * self.speed
+	print "-----------"
+        print "dir = ", self.directions_stack
+        print "p0 = ", self.last_position
+        print "p = ", self.position
+        print "t0 = ", self.last_time_point
+        print "t = ", current_time
+	print "dt = ", delta_time
+	print "nt = ", norm_time
+        while norm_time > 1: # go to next checkpoint
+            self.last_position += self.directions_stack[0]
+            if len(self.directions_stack):
+                del self.directions_stack[0]
+            self.last_time_point += 1. / speed
+            delta_time -= self.last_time_point
+            norm_time = delta_time * self.speed
+        delta_position = norm_time * self.directions_stack[0]
+        self.position = self.last_position + delta_position
             
-    def add_move_action(direction):
+    def add_move_action(self, direction):
         self.last_time_point = time.time()
-        self.move_actions.append(direction)
-        
+        if len(self.directions_stack):
+            last_direction = self.directions_stack[0]
+            self.directions_stack.append(last_direction + direction)
+        else:
+            self.directions_stack.append(direction)
+
+    def remove_move_action(direction):
+        self.directions_stack.remove(direction)
     
     def take_or_put(self):
         '''
     try to take or put an object in the current tile
-	'''
+        '''
         box = tiles_repr_to_ind['X']
         heart = tiles_repr_to_ind['C']
         void = tiles_repr_to_ind['.']
@@ -435,7 +453,16 @@ def read_event(player):
                     player.add_move_action(delta[3])
                 elif event.key == pygame.K_SPACE:
                     player.take_or_put()
-
+            elif event.type == pygame.KEYUP:
+                if event.key == pygame.K_UP:
+                    player.add_move_action(-delta[0])
+                elif event.key == pygame.K_DOWN:
+                    player.add_move_action(-delta[1])
+                elif event.key == pygame.K_LEFT:
+                    player.add_move_action(-delta[2])
+                elif event.key == pygame.K_RIGHT:
+                    player.add_move_action(-delta[3])
+ 
     
 def main():
     # pygame init
@@ -444,8 +471,8 @@ def main():
     pygame.font.init()
     pygame.init()
 
-    pygame.mixer.music.load(prefix + 'lolo.ogg')
-    pygame.mixer.music.play(-1)
+    #pygame.mixer.music.load(prefix + 'lolo.ogg')
+    #pygame.mixer.music.play(-1)
 
     # init screen and tiles
     global screen
@@ -466,7 +493,8 @@ def main():
     player.obstacle_handler = ObstacleHandlerFromLayer(map.layers[0],
                     free_tiles=[tiles_repr_to_ind[':']])
     free_layer.add_sprite(player)
-    map.active_sprites.append([player])
+
+    map.sprites_to_be_updated.append(player)
 
     game.quest = Quest()
 
