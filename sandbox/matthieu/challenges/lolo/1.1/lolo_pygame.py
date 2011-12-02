@@ -354,7 +354,7 @@ class Player(Sprite):
     def __init__(self, map, position=(0, 0),
                        coordinate_system=default_coordinate_system):
         Sprite.__init__(self, map, position, coordinate_system)
-        self.speed = 2. # tiles per seconds
+        self.speed = 4. # tiles per seconds
         self.slice_delta_time = 1. / self.speed
         self.carrying_an_object = False
         self.last_time_point = None
@@ -371,7 +371,9 @@ class Player(Sprite):
         if len(self.used_directions_stack) == 0: return
         current_time = time.time()
         delta_time = current_time - self.last_time_point 
-        norm_time = delta_time * self.speed
+        used_direction = self.used_directions_stack[0]
+        norm_used_direction = np.sqrt((used_direction ** 2).sum())
+        norm_time = delta_time * self.speed / norm_used_direction
         if 0:
             print "-----------"
             print "tdir = ", self.true_directions_stack
@@ -379,6 +381,7 @@ class Player(Sprite):
         if 0:
             print "p0 = ", self.last_position
             print "t0 = ", self.last_time_point
+        if 0:
             print "t = ", current_time
             print "dt = ", delta_time
             print "nt = ", norm_time
@@ -387,40 +390,40 @@ class Player(Sprite):
             self.last_position += self.used_directions_stack[0]
             n = len(self.used_directions_stack)
 	    if n == 2: # use the following motion or use the only one available
-                del self.directions_stack[0]
-            #if n:
-                #current_dir_norm = (self.directions_stack[0] ** 2).sum()
-		# TODO: current_dir_norm == 0 est-il possible ?
-                #if n == 2 or (n == 1 and current_dir_norm == 0):
-                #    del self.directions_stack[0]
-            delta_time -= self.slice_delta_time
-            norm_time = delta_time * self.speed
-            #new_pos = self.last_position + self.directions_stack[0]
-            self.last_time_point += self.slice_delta_time
-            #if self.obstacle_handler.sprite_can_move_to_dst(new_pos):
-            #else:
-            #    norm_time = 0
+                del self.true_directions_stack[0]
+                del self.used_directions_stack[0]
+            delta_time -= self.slice_delta_time * norm_used_direction
+            self.last_time_point += self.slice_delta_time * norm_used_direction
+            new_pos = self.last_position + self.true_directions_stack[0]
+            if not self.obstacle_handler.sprite_can_move_to_dst(new_pos):
+                self.used_directions_stack[0] = np.array([0., 0.])
+            used_direction = self.used_directions_stack[0]
+            norm_used_direction = np.sqrt((used_direction ** 2).sum())
+            if not norm_used_direction: norm_used_direction = 1
+            norm_time = delta_time * self.speed / norm_used_direction
             if 0:
                 print "tdir = ", self.true_directions_stack
                 print "udir = ", self.used_directions_stack
             if 0:
                 print "p0 = ", self.last_position
                 print "t0 = ", self.last_time_point
+            if 0:
                 print "t = ", current_time
                 print "dt = ", delta_time
                 print "nt = ", norm_time
-        delta_position = norm_time * self.directions_stack[0]
+        delta_position = norm_time * self.used_directions_stack[0]
         self.position = self.last_position + delta_position
-        if len(self.directions_stack):
-            current_dir_norm = (self.directions_stack[0] ** 2).sum()
+        if len(self.true_directions_stack):
+            current_dir_norm = (self.true_directions_stack[0] ** 2).sum()
             if current_dir_norm == 0:
-                del self.directions_stack[0]
+                del self.true_directions_stack[0]
+                del self.used_directions_stack[0]
         if 0:
             print "p = ", self.position
 
             
     def add_move_action(self, direction):
-        print "====== action ======="
+        if 0: print "====== action ======="
         n = len(self.used_directions_stack)
         if n: # combining motions 
             last_used_direction = self.used_directions_stack[0]
@@ -433,7 +436,7 @@ class Player(Sprite):
                     new_used_direction = new_dir
 		    break
                 else:
-                    new_used_direction = np.zeros([0., 0.])
+                    new_used_direction = np.array([0., 0.])
             if n == 1: # new motion to be combined with the last one
                 self.true_directions_stack.append(new_true_direction)
                 self.used_directions_stack.append(new_used_direction)
@@ -446,23 +449,23 @@ class Player(Sprite):
             if self.obstacle_handler.sprite_can_move_to_dst(new_pos):
                 new_used_direction = direction
             else:
-                new_used_direction = np.zeros([0., 0.]))
+                new_used_direction = np.array([0., 0.])
             self.true_directions_stack.append(direction)
             self.used_directions_stack.append(new_used_direction)
 
     def remove_move_action(self, direction):
-        print "====== remove action ======="
+        if 0: print "====== remove action ======="
         n = len(self.used_directions_stack)
         #if n:
         last_used_direction = self.used_directions_stack[0]
         next_used_direction = self.used_directions_stack[-1]
-        next_true_direction = self.used_directions_stack[-1]
+        next_true_direction = self.true_directions_stack[-1]
         new_true_direction = next_true_direction - direction #
         new_pos = self.last_position + last_used_direction + new_true_direction
         if self.obstacle_handler.sprite_can_move_to_dst(new_pos):
             new_used_direction = new_true_direction
         else:
-            new_used_direction = np.zeros([0., 0.])
+            new_used_direction = np.array([0., 0.])
         # next motion is no motion or simplify/decombine motion
         if n == 1: # add next motion 
             self.true_directions_stack.append(new_true_direction)
