@@ -366,7 +366,7 @@ class Player(Sprite):
         '''
     handle current actions and update position/logic
         '''
-        # FIXME : check speed of diag vs hor/vert mvt
+        # FIXME : check speed of diag vs hor/vert motion
         #         maybe the norm of direction has to be used
         if len(self.used_directions_stack) == 0: return
         current_time = time.time()
@@ -382,14 +382,17 @@ class Player(Sprite):
             print "t = ", current_time
             print "dt = ", delta_time
             print "nt = ", norm_time
-        while norm_time > 1: # go to next checkpoint
+        while norm_time > 1: # we go beyond the checkpoint
             if 0: print "!!!!!!!!!!!!"
             self.last_position += self.used_directions_stack[0]
             n = len(self.used_directions_stack)
-            if n:
-                current_dir_norm = (self.directions_stack[0] ** 2).sum()
-                if n == 2 or (n == 1 and current_dir_norm == 0):
-                    del self.directions_stack[0]
+	    if n == 2: # use the following motion or use the only one available
+                del self.directions_stack[0]
+            #if n:
+                #current_dir_norm = (self.directions_stack[0] ** 2).sum()
+		# TODO: current_dir_norm == 0 est-il possible ?
+                #if n == 2 or (n == 1 and current_dir_norm == 0):
+                #    del self.directions_stack[0]
             delta_time -= self.slice_delta_time
             norm_time = delta_time * self.speed
             #new_pos = self.last_position + self.directions_stack[0]
@@ -419,7 +422,7 @@ class Player(Sprite):
     def add_move_action(self, direction):
         print "====== action ======="
         n = len(self.used_directions_stack)
-        if n: # combining movements
+        if n: # combining motions 
             last_used_direction = self.used_directions_stack[0]
             next_true_direction = self.true_directions_stack[-1]
             next_used_direction = self.used_directions_stack[-1]
@@ -431,13 +434,13 @@ class Player(Sprite):
 		    break
                 else:
                     new_used_direction = np.zeros([0., 0.])
-            if n == 1: # new movement to be combined with the last one
+            if n == 1: # new motion to be combined with the last one
                 self.true_directions_stack.append(new_true_direction)
                 self.used_directions_stack.append(new_used_direction)
-            else: # replace last added movement to a combination by a new on
+            else: # replace last added motion to a combination by a new on
                 self.true_directions_stack[1] = new_true_direction
                 self.used_directions_stack[1] = new_used_direction
-        else: # movement from zero
+        else: # new motion from zero
             self.last_time_point = time.time()
             new_pos = self.last_position + direction
             if self.obstacle_handler.sprite_can_move_to_dst(new_pos):
@@ -460,11 +463,11 @@ class Player(Sprite):
             new_used_direction = new_true_direction
         else:
             new_used_direction = np.zeros([0., 0.])
-        # next movement is no movement or simplify/decombine movement
-        if n == 1: # add next movement
+        # next motion is no motion or simplify/decombine motion
+        if n == 1: # add next motion 
             self.true_directions_stack.append(new_true_direction)
             self.used_directions_stack.append(new_used_direction)
-        else: # n = 2 : modify next movement
+        else: # n = 2 : modify next motion
             self.true_directions_stack[1] = new_true_direction
             self.used_directions_stack[1] = new_used_direction
         #else:
