@@ -497,12 +497,18 @@ class GridKeyboardFullArrowsMotion(Motion):
         next_true_direction = self.true_directions_stack[-1]
         new_true_direction = next_true_direction - direction
         new_pos = self.last_position + last_used_direction + new_true_direction
+        if n == 1 and current_dir_norm == 0:
+            self.last_time_point = time.time()
+            del self.true_directions_stack[0]
+            del self.used_directions_stack[0]
+            del self.states_stack[0]
+            n -= 1
         if sprite.obstacle_handler.sprite_can_move_to_dst(new_pos):
             new_used_direction = new_true_direction
         else:
             new_used_direction = np.array([0., 0.])
         # next motion is no motion or simplify/decombine motion
-        if n == 1: # add next motion 
+        if n <= 1: # add next motion 
             self.true_directions_stack.append(new_true_direction)
             self.used_directions_stack.append(new_used_direction)
             new_state = self.state_from_direction(new_used_direction)
