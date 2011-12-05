@@ -137,9 +137,9 @@ class Map(object):
     def add_layer(self, layer):
         self.layers.append(layer)
 
-    def update(self):
+    def update(self, current_time):
         for sprite in self.sprites_to_be_updated:
-            sprite.update()
+            sprite.update(current_time)
 
     def load_from_file(self, filename):
         fd = open(filename)
@@ -275,6 +275,12 @@ class MapRenderer(object):
     screen : SDL surface on which the rendering is done
         '''
         self.screen = screen
+        self.tiles_max_id = 0
+        self._resources = {}
+
+    def register(self, sprite_id, sprite_state, motion_state, resource):
+        id = sprite_id, sprite_state, motion_state
+        self._resources[id] = resource
 
     def clean_screen(self):
         self.screen.fill(black_color);
@@ -298,29 +304,271 @@ class MapRenderer(object):
             sprite.render(self)
 
     def render_sprite(self, sprite):
-        self.screen.blit(sprite.get_current_image(),
-                         sprite.get_screen_position())
+        # FIXME
+        #resource = self._resources[sprite.get_imprint()]
+        self.screen.blit(sprite.get_current_image(), #XXX
+                         sprite.get_screen_position()) #XXX
+
+
+class Motion(object):
+    def __init__(self, speed=1.):
+        '''
+    speed: unit per second (according to the sprite coordinate system)
+        '''
+        self.speed = speed # tiles per seconds
+        self.states_stack = []
+
+    def init_from_sprite(self, sprite):
+        raise NotImplementedError
+
+    def update_sprite(self, sprite, dt):
+        raise NotImplementedError
+
+    def get_current_state(self):
+        if len(self.states_stack) == 0:
+            return 0
+        else:
+            return self.states_stack[0]
+
+
+class GridKeyboardFullArrowsMotion(Motion):
+    states = {0 : 'none', 1 : 'up', 2 : 'down', 3 : 'left', 4 : 'right' }
+    state_from_direction_dict = {(0, 0) : 0, (0, -1) : 1, (0, 1) : 2,
+                                 (-1, 0) : 3, (1, 0) : 4 }
+
+    def __init__(self, speed=1.):
+        '''
+    speed: unit per second (according to the sprite coordinate system)
+        '''
+        Motion.__init__(self, speed)
+        self.last_position = None
+        self.slice_delta_time = 1. / self.speed
+        self.last_time_point = None
+        self.move_actions = []
+        self.used_directions_stack = []
+        self.true_directions_stack = []
+
+    def state_from_direction(self, direction):
+	try:
+            new_state = self.state_from_direction_dict[tuple(direction)]
+        except KeyError:
+            new_state = self.states_stack[0]
+	return new_state
+
+    def init_from_sprite(self, sprite):
+        self.last_position = sprite.position
+
+    def update_sprite(self, sprite, current_time):
+        '''
+    handle current actions and update position/logic
+        '''
+        if 0: print "====== update ======="
+	if 0: print "3c)", self.true_directions_stack, self.used_directions_stack, self.states_stack
+        if len(self.used_directions_stack) == 0: return
+        delta_time = current_time - self.last_time_point 
+        used_direction = self.used_directions_stack[0]
+        norm_used_direction = np.sqrt((used_direction ** 2).sum())
+	if norm_used_direction == 0: return
+        norm_time = delta_time * self.speed / norm_used_direction
+        if 0:
+            print "-----------"
+            print "tdir = ", self.true_directions_stack
+            print "udir = ", self.used_directions_stack
+        if 0:
+            print "p0 = ", self.last_position
+            print "t0 = ", self.last_time_point
+        if 0:
+            print "t = ", current_time
+            print "dt = ", delta_time
+            print "nt = ", norm_time
+        while norm_time > 1: # we go beyond the checkpoint
+            if 0: print "!!!!!!!!!!!!"
+            self.last_position += self.used_directions_stack[0]
+            n = len(self.used_directions_stack)
+            if n == 2: # use the following motion or use the only one available
+                del self.true_directions_stack[0]
+                del self.used_directions_stack[0]
+                del self.states_stack[0]
+            delta_time -= self.slice_delta_time * norm_used_direction
+            self.last_time_point += self.slice_delta_time * norm_used_direction
+            new_pos = self.last_position + self.true_directions_stack[0]
+            if not sprite.obstacle_handler.sprite_can_move_to_dst(new_pos):
+                self.used_directions_stack[0] = np.array([0., 0.])
+                self.states_stack[0] = 0
+            used_direction = self.used_directions_stack[0]
+            norm_used_direction = np.sqrt((used_direction ** 2).sum())
+            if not norm_used_direction: norm_used_direction = 1
+            norm_time = delta_time * self.speed / norm_used_direction
+            if 0:
+                print "tdir = ", self.true_directions_stack
+                print "udir = ", self.used_directions_stack
+            if 0:
+                print "p0 = ", self.last_position
+                print "t0 = ", self.last_time_point
+            if 0:
+                print "t = ", current_time
+                print "dt = ", delta_time
+                print "nt = ", norm_time
+        delta_position = norm_time * self.used_directions_stack[0]
+        sprite.position = self.last_position + delta_position
+        if len(self.true_directions_stack):
+            current_dir_norm = (self.true_directions_stack[0] ** 2).sum()
+            if current_dir_norm == 0:
+                del self.true_directions_stack[0]
+                del self.used_directions_stack[0]
+                del self.states_stack[0]
+        if 0:
+            print "p = ", sprite.position
+	if 0: print "3b)", self.true_directions_stack, self.used_directions_stack, self.states_stack
+	print self.states_stack
+
+    def add_move_action(self, sprite, direction):
+        if 0: print "====== action =======", direction
+	if 0: print "1a)", self.true_directions_stack, self.used_directions_stack, self.states_stack
+        n = len(self.used_directions_stack)
+        if n: # combining motions 
+            current_dir_norm = (self.used_directions_stack[0] ** 2).sum()
+            if n == 2 and current_dir_norm == 0:
+                self.last_time_point = time.time()
+                del self.true_directions_stack[0]
+                del self.used_directions_stack[0]
+                del self.states_stack[0]
+                n -= 1
+            last_used_direction = self.used_directions_stack[0]
+            next_true_direction = self.true_directions_stack[-1]
+            next_used_direction = self.used_directions_stack[-1]
+            new_true_direction  = next_true_direction + direction
+            for new_dir in [new_true_direction, direction, next_used_direction]:
+                new_pos = self.last_position + last_used_direction + new_dir
+                if sprite.obstacle_handler.sprite_can_move_to_dst(new_pos):
+                    new_used_direction = new_dir
+                    break
+                else:
+                    new_used_direction = np.array([0., 0.])
+            if n == 1: # new motion to be combined with the last one
+                self.true_directions_stack.append(new_true_direction)
+                self.used_directions_stack.append(new_used_direction)
+                new_state = self.state_from_direction(new_used_direction)
+                self.states_stack.append(new_state)
+            else: # replace last added motion to a combination by a new on
+                self.true_directions_stack[1] = new_true_direction
+                self.used_directions_stack[1] = new_used_direction
+                new_state = self.state_from_direction(new_used_direction)
+                self.states_stack[1] = new_state
+        else: # new motion from zero
+            self.last_time_point = time.time()
+            new_pos = self.last_position + direction
+            if sprite.obstacle_handler.sprite_can_move_to_dst(new_pos):
+                new_used_direction = direction
+            else:
+                new_used_direction = np.array([0., 0.])
+            self.true_directions_stack.append(direction)
+            self.used_directions_stack.append(new_used_direction)
+            new_state = self.state_from_direction(new_used_direction)
+            self.states_stack.append(new_state)
+	if 0: print "1b)", self.true_directions_stack, self.used_directions_stack, self.states_stack
+        if len(self.true_directions_stack):
+            current_dir_norm = (self.true_directions_stack[0] ** 2).sum()
+            if current_dir_norm == 0:
+                del self.true_directions_stack[0]
+                del self.used_directions_stack[0]
+                del self.states_stack[0]
+	if 0: print "1c)", self.true_directions_stack, self.used_directions_stack, self.states_stack
+                
+    def remove_move_action(self, sprite, direction):
+        if 0: print "====== remove action =======", direction
+	if 0: print "2a)", self.true_directions_stack, self.used_directions_stack, self.states_stack
+        n = len(self.used_directions_stack)
+        if n == 0:
+            self.last_time_point = time.time()
+            self.used_directions_stack.append(np.array([0., 0.]))
+            self.true_directions_stack.append(np.array([0., 0.]))
+            self.states_stack.append(0)
+            n = 1
+        current_dir_norm = (self.used_directions_stack[0] ** 2).sum()
+        if n == 2 and current_dir_norm == 0:
+            self.last_time_point = time.time()
+            del self.true_directions_stack[0]
+            del self.used_directions_stack[0]
+            del self.states_stack[0]
+            n -= 1
+        last_used_direction = self.used_directions_stack[0]
+        next_used_direction = self.used_directions_stack[-1]
+        next_true_direction = self.true_directions_stack[-1]
+        new_true_direction = next_true_direction - direction
+        new_pos = self.last_position + last_used_direction + new_true_direction
+        if sprite.obstacle_handler.sprite_can_move_to_dst(new_pos):
+            new_used_direction = new_true_direction
+        else:
+            new_used_direction = np.array([0., 0.])
+        # next motion is no motion or simplify/decombine motion
+        if n == 1: # add next motion 
+            self.true_directions_stack.append(new_true_direction)
+            self.used_directions_stack.append(new_used_direction)
+            new_state = self.state_from_direction(new_used_direction)
+            self.states_stack.append(new_state)
+        else: # n = 2 : modify next motion
+            self.true_directions_stack[1] = new_true_direction
+            self.used_directions_stack[1] = new_used_direction
+            new_state = self.state_from_direction(new_used_direction)
+            self.states_stack[1] = new_state
+	if 0: print "2b)", self.true_directions_stack, self.used_directions_stack, self.states_stack
+        if len(self.true_directions_stack):
+            current_dir_norm = (self.true_directions_stack[0] ** 2).sum()
+            if current_dir_norm == 0:
+                del self.true_directions_stack[0]
+                del self.used_directions_stack[0]
+                del self.states_stack[0]
+	if 0: print "2c)", self.true_directions_stack, self.used_directions_stack, self.states_stack
+
+
+    def add_move_up(self, sprite):
+        self.add_move_action(sprite, np.array([0., -1.]))
+
+    def add_move_down(self, sprite):
+        self.add_move_action(sprite, np.array([0., 1.]))
+
+    def add_move_left(self, sprite):
+        self.add_move_action(sprite, np.array([-1., 0.]))
+
+    def add_move_right(self, sprite):
+        self.add_move_action(sprite, np.array([1., 0.]))
+
+    def remove_move_up(self, sprite):
+        self.remove_move_action(sprite, np.array([0., -1.]))
+
+    def remove_move_down(self, sprite):
+        self.remove_move_action(sprite, np.array([0., 1.]))
+
+    def remove_move_left(self, sprite):
+        self.remove_move_action(sprite, np.array([-1., 0.]))
+
+    def remove_move_right(self, sprite):
+        self.remove_move_action(sprite, np.array([1., 0.]))
 
 
 class Sprite(object):
     def __init__(self, layer, position=(0, 0),
                        coordinate_system=default_coordinate_system):
+        self.id = None # no_id
+        self.state = 0 # default
+        self.motion = None
         self.layer = layer
         self.position = np.asarray(position)
-        self.last_position = np.copy(self.position)
-        self.sdl_img = None
+        self.sdl_img = None #XXX
         self.obstacle_handler = default_obstacle_handler
 
-    def load_from_file(self, filename):
-        self.sdl_img = pygame.image.load(filename).convert_alpha()
+    def get_imprint(self):
+        return self.id, self.state, self.motion.get_current_state()
 
-    def get_current_image(self):
-        return self.sdl_img
+    def set_motion(self, motion):
+        self.motion = motion
+        self.motion.init_from_sprite(self)
 
-    def move_delta(self, delta):
-        new_pos = self.position + np.asarray(delta)
-        if self.obstacle_handler.sprite_can_move_to_dst(new_pos):
-            self.position = new_pos
+    def load_from_file(self, filename): #XXX
+        self.sdl_img = pygame.image.load(filename).convert_alpha() #XXX
+    def get_current_image(self): #XXX
+        return self.sdl_img #XXX
 
     def render(self, renderer):
         renderer.render_sprite(self)
@@ -331,8 +579,8 @@ class Sprite(object):
     def set_position(self, position):
         self.position = np.asarray(position)
 
-    def update(self):
-        pass
+    def update(self, current_time):
+        self.motion.update_sprite(self, current_time)
 
 
 class Screen(object):
@@ -354,128 +602,9 @@ class Player(Sprite):
     def __init__(self, map, position=(0, 0),
                        coordinate_system=default_coordinate_system):
         Sprite.__init__(self, map, position, coordinate_system)
-        self.speed = 4. # tiles per seconds
-        self.slice_delta_time = 1. / self.speed
+        self.set_motion(GridKeyboardFullArrowsMotion(speed=4.))
         self.carrying_an_object = False
-        self.last_time_point = None
-        self.move_actions = []
-        self.used_directions_stack = []
-        self.true_directions_stack = []
-
-    def update(self):
-        '''
-    handle current actions and update position/logic
-        '''
-        # FIXME : check speed of diag vs hor/vert motion
-        #         maybe the norm of direction has to be used
-        if len(self.used_directions_stack) == 0: return
-        current_time = time.time()
-        delta_time = current_time - self.last_time_point 
-        used_direction = self.used_directions_stack[0]
-        norm_used_direction = np.sqrt((used_direction ** 2).sum())
-        norm_time = delta_time * self.speed / norm_used_direction
-        if 0:
-            print "-----------"
-            print "tdir = ", self.true_directions_stack
-            print "udir = ", self.used_directions_stack
-        if 0:
-            print "p0 = ", self.last_position
-            print "t0 = ", self.last_time_point
-        if 0:
-            print "t = ", current_time
-            print "dt = ", delta_time
-            print "nt = ", norm_time
-        while norm_time > 1: # we go beyond the checkpoint
-            if 0: print "!!!!!!!!!!!!"
-            self.last_position += self.used_directions_stack[0]
-            n = len(self.used_directions_stack)
-	    if n == 2: # use the following motion or use the only one available
-                del self.true_directions_stack[0]
-                del self.used_directions_stack[0]
-            delta_time -= self.slice_delta_time * norm_used_direction
-            self.last_time_point += self.slice_delta_time * norm_used_direction
-            new_pos = self.last_position + self.true_directions_stack[0]
-            if not self.obstacle_handler.sprite_can_move_to_dst(new_pos):
-                self.used_directions_stack[0] = np.array([0., 0.])
-            used_direction = self.used_directions_stack[0]
-            norm_used_direction = np.sqrt((used_direction ** 2).sum())
-            if not norm_used_direction: norm_used_direction = 1
-            norm_time = delta_time * self.speed / norm_used_direction
-            if 0:
-                print "tdir = ", self.true_directions_stack
-                print "udir = ", self.used_directions_stack
-            if 0:
-                print "p0 = ", self.last_position
-                print "t0 = ", self.last_time_point
-            if 0:
-                print "t = ", current_time
-                print "dt = ", delta_time
-                print "nt = ", norm_time
-        delta_position = norm_time * self.used_directions_stack[0]
-        self.position = self.last_position + delta_position
-        if len(self.true_directions_stack):
-            current_dir_norm = (self.true_directions_stack[0] ** 2).sum()
-            if current_dir_norm == 0:
-                del self.true_directions_stack[0]
-                del self.used_directions_stack[0]
-        if 0:
-            print "p = ", self.position
-
-            
-    def add_move_action(self, direction):
-        if 0: print "====== action ======="
-        n = len(self.used_directions_stack)
-        if n: # combining motions 
-            last_used_direction = self.used_directions_stack[0]
-            next_true_direction = self.true_directions_stack[-1]
-            next_used_direction = self.used_directions_stack[-1]
-            new_true_direction  = next_true_direction + direction
-            for new_dir in [new_true_direction, direction, next_used_direction]:
-                new_pos = self.last_position + last_used_direction + new_dir
-		if self.obstacle_handler.sprite_can_move_to_dst(new_pos):
-                    new_used_direction = new_dir
-		    break
-                else:
-                    new_used_direction = np.array([0., 0.])
-            if n == 1: # new motion to be combined with the last one
-                self.true_directions_stack.append(new_true_direction)
-                self.used_directions_stack.append(new_used_direction)
-            else: # replace last added motion to a combination by a new on
-                self.true_directions_stack[1] = new_true_direction
-                self.used_directions_stack[1] = new_used_direction
-        else: # new motion from zero
-            self.last_time_point = time.time()
-            new_pos = self.last_position + direction
-            if self.obstacle_handler.sprite_can_move_to_dst(new_pos):
-                new_used_direction = direction
-            else:
-                new_used_direction = np.array([0., 0.])
-            self.true_directions_stack.append(direction)
-            self.used_directions_stack.append(new_used_direction)
-
-    def remove_move_action(self, direction):
-        if 0: print "====== remove action ======="
-        n = len(self.used_directions_stack)
-        #if n:
-        last_used_direction = self.used_directions_stack[0]
-        next_used_direction = self.used_directions_stack[-1]
-        next_true_direction = self.true_directions_stack[-1]
-        new_true_direction = next_true_direction - direction #
-        new_pos = self.last_position + last_used_direction + new_true_direction
-        if self.obstacle_handler.sprite_can_move_to_dst(new_pos):
-            new_used_direction = new_true_direction
-        else:
-            new_used_direction = np.array([0., 0.])
-        # next motion is no motion or simplify/decombine motion
-        if n == 1: # add next motion 
-            self.true_directions_stack.append(new_true_direction)
-            self.used_directions_stack.append(new_used_direction)
-        else: # n = 2 : modify next motion
-            self.true_directions_stack[1] = new_true_direction
-            self.used_directions_stack[1] = new_used_direction
-        #else:
-        #    self.directions_stack.append(-direction)
-    
+                
     def take_or_put(self):
         '''
     try to take or put an object in the current tile
@@ -510,37 +639,41 @@ class Player(Sprite):
                     print "you loose !"
                     return
 
+    def key_down(self, key):
+        if key == pygame.K_UP:
+            self.motion.add_move_up(self)
+        elif key == pygame.K_DOWN:
+            self.motion.add_move_down(self)
+        elif key == pygame.K_LEFT:
+            self.motion.add_move_left(self)
+        elif key == pygame.K_RIGHT:
+            self.motion.add_move_right(self)
 
+    def key_up(self, key):
+        if key == pygame.K_UP:
+            self.motion.remove_move_up(self)
+        elif key == pygame.K_DOWN:
+            self.motion.remove_move_down(self)
+        elif key == pygame.K_LEFT:
+            self.motion.remove_move_left(self)
+        elif key == pygame.K_RIGHT:
+            self.motion.remove_move_right(self)
 
 def read_event(player):
-        delta = np.array([[0., -1.], [0., 1.], [-1., 0], [1., 0]])
-        for event in pygame.event.get():
-            if event.type == pygame.QUIT:
+    for event in pygame.event.get():
+        if event.type == pygame.QUIT:
+            sys.exit(0)
+        elif event.type == pygame.KEYDOWN:
+            if event.key == pygame.K_q or event.key == pygame.K_ESCAPE:
                 sys.exit(0)
-            elif event.type == pygame.KEYDOWN:
-                if event.key == pygame.K_q or event.key == pygame.K_ESCAPE:
-                    sys.exit(0)
-                if event.key == pygame.K_UP:
-                    player.add_move_action(delta[0])
-                elif event.key == pygame.K_DOWN:
-                    player.add_move_action(delta[1])
-                elif event.key == pygame.K_LEFT:
-                    player.add_move_action(delta[2])
-                elif event.key == pygame.K_RIGHT:
-                    player.add_move_action(delta[3])
-                elif event.key == pygame.K_SPACE:
-                    player.take_or_put()
-            elif event.type == pygame.KEYUP:
-                if event.key == pygame.K_UP:
-                    player.remove_move_action(delta[0])
-                elif event.key == pygame.K_DOWN:
-                    player.remove_move_action(delta[1])
-                elif event.key == pygame.K_LEFT:
-                    player.remove_move_action(delta[2])
-                elif event.key == pygame.K_RIGHT:
-                    player.remove_move_action(delta[3])
- 
-    
+            elif event.key == pygame.K_SPACE:
+                player.take_or_put()
+            else:
+                player.key_down(event.key)
+        elif event.type == pygame.KEYUP:
+            player.key_up(event.key)
+
+   
 def main():
     # pygame init
     pygame.mixer.init()
@@ -578,7 +711,8 @@ def main():
     # main loop
     while not game.quest.end:
         read_event(player)
-        map.update()
+        current_time = time.time()
+        map.update(current_time)
         screen.render(map)
 
     # clean and quit
