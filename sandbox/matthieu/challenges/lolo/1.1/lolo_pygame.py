@@ -1,18 +1,9 @@
 #!/usr/bin/env python
 
-import sys, os, re, time
+import sys, os, re, time, glob
 import pygame
 import numpy as np
 
-#-------------------------------------------------------------------------------
-# step 1 : lecture de la map
-# step 2 : affichage de la map (layers + tiles)
-# step 3 : affichage du perso (free layer)
-# step 4 : controle clavier du perso
-# step 5 : prendre et poser les coeurs sur le morpion
-# step 6 : jouer au morpion
-# step 7 : obstacles
-#
 #-------------------------------------------------------------------------------
 # idee 1 : layer statique :
 #          - on blit tous les tiles a l'init dans un sdl surface / texture
@@ -23,32 +14,8 @@ import numpy as np
 
 #-------------------------------------------------------------------------------
 black_color = 0, 0, 0
-prefix = "../common_data/"
 
 #-------------------------------------------------------------------------------
-tiles_img_files = {\
-    ':' : 'background.jpg',
-    '=' : 'wall.jpg',
-    'o' : 'stone.png',
-    '+' : 'tree.png',
-    'A' : 'door.png',
-    'f' : 'frontwall.png',
-    'C' : 'heart.png',
-    'X' : 'box.png',
-    '_' : 'black.png',
-#   '.' represents an invisible tile
-}
-
-tiles_repr_to_ind = {'.' : -1}
-tiles_sdl_img = {}
-
-
-def load_tiles():
-    for i, (k, filename) in enumerate(tiles_img_files.items()):
-        tiles_sdl_img[i] = pygame.image.load(prefix + filename).convert_alpha()
-        tiles_repr_to_ind[k] = i
-
-
 class BasicCoordinateSystem(object):
     def __init__(self, offset=(0, 0), scaling=(1, 1)):
         '''
@@ -79,9 +46,9 @@ class TiledStaticLayer(Layer):
         Layer.__init__(self, coordinate_system)
         self.tiles_map = np.zeros((height, width), dtype=np.int16)
 
-    def fill_with_string(self, string):
+    def fill_with_string(self, resource_manager, string):
         for i, val in enumerate(string):
-            self.tiles_map.ravel()[i] = tiles_repr_to_ind[val]
+            self.tiles_map.ravel()[i] = resource_manager._tiles_repr_to_ind[val]
 
     def render(self, renderer):
         renderer.render_tiled_static_layer(self)
@@ -128,9 +95,9 @@ class FreeLayer(Layer):
 
 
 class Map(object):
-    def __init__(self, filename):
+    def __init__(self, resource_manager, filename):
         self.layers = [] # one tiles map per layer
-        self.load_from_file(filename)
+        self.load_from_file(resource_manager, filename)
         # sprites which have to be updated
         self.sprites_to_be_updated = []
 
@@ -141,7 +108,7 @@ class Map(object):
         for sprite in self.sprites_to_be_updated:
             sprite.update(current_time)
 
-    def load_from_file(self, filename):
+    def load_from_file(self, resource_manager, filename):
         fd = open(filename)
         lines = fd.readlines()
         for i, line in enumerate(lines):
@@ -183,7 +150,7 @@ class Map(object):
         self.layers = []
         for layer in layers:
             tiles_map = TiledStaticLayer(width, height)
-            tiles_map.fill_with_string(''.join(layer))
+            tiles_map.fill_with_string(resource_manager, ''.join(layer))
             self.layers.append(tiles_map)
 
     def render(self, renderer):
@@ -218,42 +185,9 @@ class ObstacleHandlerFromLayer(ObstacleHandler):
         return tiles_map[dst[1], dst[0]] in self.free_tiles
 
 #-------------------------------------------------------------------------------
-class TicTacToe(object):
-    def __init__(self):
-        self.board = np.zeros((3, 3), dtype=np.int16)
-        self.end = False
-
-    def player_play(self, player_ind, pos):
-        if self.end: return None
-        self.board[tuple(pos)] = player_ind
-        return pos
-
-    def ia_play(self, player_ind):
-        '''
-    ia play randomly
-        '''
-        if self.end: return None
-        T = np.argwhere(self.board == 0)
-        pos = tuple(T[np.random.randint(len(T))])
-        self.board[pos] = player_ind
-        return pos
-
-    def check(self, player_ind):
-        T = (self.board == player_ind)
-        r = (T.sum(axis=0) == 3).sum()      # row
-        c = (T.sum(axis=1) == 3).sum()      # col
-        d1 = (np.diag(T).sum() == 3)       # first diag
-        d2 = (np.diag(T[::-1]).sum() == 3) # second diag
-        if (r + c + d1 + d2) > 0:
-            self.end = True
-            return True
-        return False
-
-
 class Quest(object):
     def __init__(self):
         self.move_n = 0
-        self.tictactoe = TicTacToe()
         self.end = False
     
 
@@ -270,28 +204,23 @@ class MapRenderer(object):
 
     Note: follow the visitor pattern
     '''
-    def __init__(self, screen):
+    def __init__(self, resource_manager, screen):
         '''
     screen : SDL surface on which the rendering is done
         '''
+        self.resource_manager = resource_manager
         self.screen = screen
-        self.tiles_max_id = 0
-        self._resources = {}
-
-    def register(self, sprite_id, sprite_state, motion_state, resource):
-        id = sprite_id, sprite_state, motion_state
-        self._resources[id] = resource
 
     def clean_screen(self):
-        self.screen.fill(black_color);
+        self.screen.fill(black_color)
 
     def render_tiled_static_layer(self, layer):
         tiles_map = layer.tiles_map
         for j, row in enumerate(tiles_map):
             for i, value in enumerate(row):
-                ind = tiles_map[j, i]
-                if ind == -1: continue
-                img = tiles_sdl_img[ind]
+                tile_id = tiles_map[j, i]
+                if tile_id == -1: continue
+                img = self.resource_manager.get_tile_resource(tile_id).get_current_version(0)
                 pos = layer.coordinate_system.to_screen(np.array([i, j]))
                 self.screen.blit(img, pos)
 
@@ -304,10 +233,10 @@ class MapRenderer(object):
             sprite.render(self)
 
     def render_sprite(self, sprite):
-        # FIXME
-        #resource = self._resources[sprite.get_imprint()]
-        self.screen.blit(sprite.get_current_image(), #XXX
-                         sprite.get_screen_position()) #XXX
+        resource_id = sprite.get_current_resource_id()
+	t = sprite.motion.get_current_animation_time()
+        img = self.resource_manager.get_sprite_resource(resource_id).get_current_version(t)
+        self.screen.blit(img, sprite.get_screen_position())
 
 
 class Motion(object):
@@ -330,6 +259,9 @@ class Motion(object):
         else:
             return self.states_stack[0]
 
+    def get_current_animation_time(self):
+        return 0
+
 
 class GridKeyboardFullArrowsMotion(Motion):
     states = {0 : 'none', 1 : 'up', 2 : 'down', 3 : 'left', 4 : 'right' }
@@ -347,13 +279,17 @@ class GridKeyboardFullArrowsMotion(Motion):
         self.move_actions = []
         self.used_directions_stack = []
         self.true_directions_stack = []
+        self._curvilinear_abscissa = 0.
+
+    def get_current_animation_time(self):
+        return self._curvilinear_abscissa
 
     def state_from_direction(self, direction):
-	try:
+        try:
             new_state = self.state_from_direction_dict[tuple(direction)]
         except KeyError:
             new_state = self.states_stack[0]
-	return new_state
+        return new_state
 
     def init_from_sprite(self, sprite):
         self.last_position = sprite.position
@@ -362,27 +298,13 @@ class GridKeyboardFullArrowsMotion(Motion):
         '''
     handle current actions and update position/logic
         '''
-        if 0: print "====== update ======="
-	if 0: print "3c)", self.true_directions_stack, self.used_directions_stack, self.states_stack
         if len(self.used_directions_stack) == 0: return
         delta_time = current_time - self.last_time_point 
         used_direction = self.used_directions_stack[0]
         norm_used_direction = np.sqrt((used_direction ** 2).sum())
-	if norm_used_direction == 0: return
+        if norm_used_direction == 0: return
         norm_time = delta_time * self.speed / norm_used_direction
-        if 0:
-            print "-----------"
-            print "tdir = ", self.true_directions_stack
-            print "udir = ", self.used_directions_stack
-        if 0:
-            print "p0 = ", self.last_position
-            print "t0 = ", self.last_time_point
-        if 0:
-            print "t = ", current_time
-            print "dt = ", delta_time
-            print "nt = ", norm_time
         while norm_time > 1: # we go beyond the checkpoint
-            if 0: print "!!!!!!!!!!!!"
             self.last_position += self.used_directions_stack[0]
             n = len(self.used_directions_stack)
             if n == 2: # use the following motion or use the only one available
@@ -399,16 +321,7 @@ class GridKeyboardFullArrowsMotion(Motion):
             norm_used_direction = np.sqrt((used_direction ** 2).sum())
             if not norm_used_direction: norm_used_direction = 1
             norm_time = delta_time * self.speed / norm_used_direction
-            if 0:
-                print "tdir = ", self.true_directions_stack
-                print "udir = ", self.used_directions_stack
-            if 0:
-                print "p0 = ", self.last_position
-                print "t0 = ", self.last_time_point
-            if 0:
-                print "t = ", current_time
-                print "dt = ", delta_time
-                print "nt = ", norm_time
+        self._curvilinear_abscissa = norm_time
         delta_position = norm_time * self.used_directions_stack[0]
         sprite.position = self.last_position + delta_position
         if len(self.true_directions_stack):
@@ -417,14 +330,8 @@ class GridKeyboardFullArrowsMotion(Motion):
                 del self.true_directions_stack[0]
                 del self.used_directions_stack[0]
                 del self.states_stack[0]
-        if 0:
-            print "p = ", sprite.position
-	if 0: print "3b)", self.true_directions_stack, self.used_directions_stack, self.states_stack
-	print self.states_stack
 
     def add_move_action(self, sprite, direction):
-        if 0: print "====== action =======", direction
-	if 0: print "1a)", self.true_directions_stack, self.used_directions_stack, self.states_stack
         n = len(self.used_directions_stack)
         if n: # combining motions 
             current_dir_norm = (self.used_directions_stack[0] ** 2).sum()
@@ -466,18 +373,14 @@ class GridKeyboardFullArrowsMotion(Motion):
             self.used_directions_stack.append(new_used_direction)
             new_state = self.state_from_direction(new_used_direction)
             self.states_stack.append(new_state)
-	if 0: print "1b)", self.true_directions_stack, self.used_directions_stack, self.states_stack
         if len(self.true_directions_stack):
             current_dir_norm = (self.true_directions_stack[0] ** 2).sum()
             if current_dir_norm == 0:
                 del self.true_directions_stack[0]
                 del self.used_directions_stack[0]
                 del self.states_stack[0]
-	if 0: print "1c)", self.true_directions_stack, self.used_directions_stack, self.states_stack
                 
     def remove_move_action(self, sprite, direction):
-        if 0: print "====== remove action =======", direction
-	if 0: print "2a)", self.true_directions_stack, self.used_directions_stack, self.states_stack
         n = len(self.used_directions_stack)
         if n == 0:
             self.last_time_point = time.time()
@@ -518,15 +421,12 @@ class GridKeyboardFullArrowsMotion(Motion):
             self.used_directions_stack[1] = new_used_direction
             new_state = self.state_from_direction(new_used_direction)
             self.states_stack[1] = new_state
-	if 0: print "2b)", self.true_directions_stack, self.used_directions_stack, self.states_stack
         if len(self.true_directions_stack):
             current_dir_norm = (self.true_directions_stack[0] ** 2).sum()
             if current_dir_norm == 0:
                 del self.true_directions_stack[0]
                 del self.used_directions_stack[0]
                 del self.states_stack[0]
-	if 0: print "2c)", self.true_directions_stack, self.used_directions_stack, self.states_stack
-
 
     def add_move_up(self, sprite):
         self.add_move_action(sprite, np.array([0., -1.]))
@@ -554,27 +454,24 @@ class GridKeyboardFullArrowsMotion(Motion):
 
 
 class Sprite(object):
+    max_id = 0
+
     def __init__(self, layer, position=(0, 0),
                        coordinate_system=default_coordinate_system):
-        self.id = None # no_id
+        self.id = Sprite.max_id
+        Sprite.max_id += 1
         self.state = 0 # default
         self.motion = None
         self.layer = layer
         self.position = np.asarray(position)
-        self.sdl_img = None #XXX
         self.obstacle_handler = default_obstacle_handler
 
-    def get_imprint(self):
+    def get_current_resource_id(self):
         return self.id, self.state, self.motion.get_current_state()
 
     def set_motion(self, motion):
         self.motion = motion
         self.motion.init_from_sprite(self)
-
-    def load_from_file(self, filename): #XXX
-        self.sdl_img = pygame.image.load(filename).convert_alpha() #XXX
-    def get_current_image(self): #XXX
-        return self.sdl_img #XXX
 
     def render(self, renderer):
         renderer.render_sprite(self)
@@ -593,17 +490,23 @@ class Screen(object):
     def __init__(self, resolution):
         self.resolution = resolution
         self.sdl_screen = pygame.display.set_mode(resolution)
-        self.sdl_surface = pygame.Surface(resolution);
-        self.renderer = MapRenderer(self.sdl_surface)
+        self.sdl_surface = pygame.Surface(resolution)
 
-    def render(self, map):
-        map.render(self.renderer)
-        self.sdl_screen.blit(self.sdl_surface, (0, 0));
-        pygame.display.update();
+    def fill(self, color):
+        self.sdl_surface.fill(color)
 
-screen = None
+    def blit(self, img, pos):
+        self.sdl_surface.blit(img, pos)
+
+    def render(self, renderer, map):
+        map.render(renderer)
+        self.sdl_screen.blit(self.sdl_surface, (0, 0))
+        pygame.display.update()
+
 
 #-------------------------------------------------------------------------------
+# game specifics
+
 class Player(Sprite):
     def __init__(self, map, position=(0, 0),
                        coordinate_system=default_coordinate_system):
@@ -611,40 +514,6 @@ class Player(Sprite):
         self.set_motion(GridKeyboardFullArrowsMotion(speed=4.))
         self.carrying_an_object = False
                 
-    def take_or_put(self):
-        '''
-    try to take or put an object in the current tile
-        '''
-        box = tiles_repr_to_ind['X']
-        heart = tiles_repr_to_ind['C']
-        void = tiles_repr_to_ind['.']
-        black = tiles_repr_to_ind['_']
-        bg = tiles_repr_to_ind[':']
-        tictactoe = game.quest.tictactoe
-        for layer in self.map.layers:
-            if not isinstance(layer, TiledStaticLayer): continue
-            tiles_map = layer.tiles_map
-            tiles_ind = tiles_map[self.position[1], self.position[0]]
-            if not layer.is_actionnable: continue
-            if game.quest.tictactoe.end: return
-            if tiles_ind == heart and not self.carrying_an_object:
-                self.carrying_an_object = True
-                tiles_map[self.position[1], self.position[0]] = void
-            if tiles_ind == black and self.carrying_an_object:
-                self.carrying_an_object = False
-                tiles_map[self.position[1], self.position[0]] = heart
-                tictactoe.player_play(1, self.position - 10)
-                if tictactoe.check(1):
-                    self.map.layers[0].tiles_map[1, 17] = bg
-                    print "you win !"
-                    return
-                pos = tictactoe.ia_play(2)
-                if pos:
-                    self.map.layers[1].tiles_map[pos[1] + 10, pos[0] + 10] = box
-                if tictactoe.check(2):
-                    print "you loose !"
-                    return
-
     def key_down(self, key):
         if key == pygame.K_UP:
             self.motion.add_move_up(self)
@@ -672,44 +541,148 @@ def read_event(player):
         elif event.type == pygame.KEYDOWN:
             if event.key == pygame.K_q or event.key == pygame.K_ESCAPE:
                 sys.exit(0)
-            elif event.key == pygame.K_SPACE:
-                player.take_or_put()
             else:
                 player.key_down(event.key)
         elif event.type == pygame.KEYUP:
             player.key_up(event.key)
 
-   
+
+#-------------------------------------------------------------------------------
+class Resource(object):
+    def get_current_frame(self, t):
+        '''
+    Return the version of the resource at the normalized time 't'
+
+    t: floating number between 0 and 1
+        '''
+        raise NotImplementedError
+
+
+class ImageResource(Resource):
+    def __init__(self, resource_filename):
+        Resource.__init__(self)
+        self._raw_image = pygame.image.load(resource_filename).convert_alpha()
+
+    def get_current_version(self, t):
+        return self._raw_image
+
+
+class AnimationResource(Resource):
+    def __init__(self, resource_prefix):
+        Resource.__init__(self)
+        self._raw_images = []
+	filenames = glob.glob(resource_prefix + '*.*')
+	if len(filenames) == 0: raise ValueError
+	for filename in filenames:
+            raw_image = pygame.image.load(filename).convert_alpha()
+            self._raw_images.append(raw_image)
+
+    def get_current_version(self, t):
+        size = len(self._raw_images)
+        ind = int(t * size)
+	if ind < 0: ind = 0
+	elif ind >= size: ind = size - 1
+        return self._raw_images[ind]
+
+
+class ResourceManager(object):
+    def __init__(self, prefix):
+        self.prefix = prefix
+        self.tiles_max_id = 0
+        self._resources = {}
+        self._tiles = {}
+        # string repr must be used only during data loading
+        self._tiles_repr_to_ind = {'.' : -1}
+
+    def register_animation(self, sprite_id, sprite_state,
+                           motion_state, resource_prefix):
+        resource_id = sprite_id, sprite_state, motion_state
+        path = os.path.join(self.prefix, 'animations', resource_prefix)
+        self._resources[resource_id] = AnimationResource(path)
+
+    def register_image(self, sprite_id, sprite_state,
+                       motion_state, resource_filename):
+        resource_id = sprite_id, sprite_state, motion_state
+        path = os.path.join(self.prefix, resource_filename)
+        self._resources[resource_id] = ImageResource(path)
+
+    def register_tile(self, tile_repr, resource_filename):
+        tile_id = self.tiles_max_id
+        self.tiles_max_id += 1
+        path = os.path.join(self.prefix, resource_filename)
+        self._tiles[tile_id] = ImageResource(path)
+        self._tiles_repr_to_ind[tile_repr] = tile_id
+
+    def get_tile_resource(self, resource_id):
+        return self._tiles[resource_id]
+
+    def get_sprite_resource(self, resource_id):
+        return self._resources[resource_id]
+
+
+#-------------------------------------------------------------------------------
+# main
+
+tiles_img_files = {\
+    ':' : 'background.jpg',
+    '=' : 'wall.jpg',
+    'o' : 'stone.png',
+    '+' : 'tree.png',
+    'A' : 'door.png',
+    'f' : 'frontwall.png',
+    'C' : 'heart.png',
+    'X' : 'box.png',
+    '_' : 'black.png',
+#   '.' represents an invisible tile
+}
+
+# globals
+#screen = None
+
 def main():
+    # config
+    prefix = "../common_data/"
+    music = False
+
+    resource_manager = ResourceManager(prefix)
+
     # pygame init
     pygame.mixer.init()
     pygame.mixer.pre_init(44100, -16, 2, 2048)
     pygame.font.init()
     pygame.init()
 
-    #pygame.mixer.music.load(prefix + 'lolo.ogg')
-    #pygame.mixer.music.play(-1)
+    if music:
+        pygame.mixer.music.load(prefix + 'lolo.ogg')
+        pygame.mixer.music.play(-1)
 
     # init screen and tiles
-    global screen
+    #global screen #FIXME : remove
     screen = Screen((640, 480))
-    load_tiles()
+    renderer = MapRenderer(resource_manager, screen)
+    for (tile_repr, filename) in tiles_img_files.items():
+        resource_manager.register_tile(tile_repr, filename)
 
     # create map
     coordinate_system = BasicCoordinateSystem(scaling=np.array([30, 30]))
-    map = Map("lolo.map")
+    map = Map(resource_manager, "lolo.map")
     for layer in map.layers:
         layer.coordinate_system = coordinate_system
     map.layers[1].is_actionnable = True
     free_layer = FreeLayer(coordinate_system)
     map.add_layer(free_layer)
+
+    # player
     player = Player(free_layer, [1, 2])
     player.map = map # tmp hack
-    player.load_from_file(prefix + "player.png")
     player.obstacle_handler = ObstacleHandlerFromLayer(map.layers[0],
-                    free_tiles=[tiles_repr_to_ind[':']])
+                    free_tiles=[resource_manager._tiles_repr_to_ind[':']])
     free_layer.add_sprite(player)
-
+    resource_manager.register_image(player.id, 0, 0, "player.png")
+    resource_manager.register_animation(player.id, 0, 1, "lolo-up")
+    resource_manager.register_animation(player.id, 0, 2, "lolo-down")
+    resource_manager.register_animation(player.id, 0, 3, "lolo-left")
+    resource_manager.register_animation(player.id, 0, 4, "lolo-right")
     map.sprites_to_be_updated.append(player)
 
     game.quest = Quest()
@@ -719,7 +692,7 @@ def main():
         read_event(player)
         current_time = time.time()
         map.update(current_time)
-        screen.render(map)
+        screen.render(renderer, map)
 
     # clean and quit
     pygame.font.quit()
