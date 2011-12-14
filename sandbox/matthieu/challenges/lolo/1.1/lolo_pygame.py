@@ -36,7 +36,7 @@ class Layer(object):
         self.coordinate_system = coordinate_system
         self.is_actionnable = False
 
-    def render(self, renderer):
+    def render(self, renderer, current_time=0):
         raise NotImplementedError
 
 
@@ -50,7 +50,7 @@ class TiledStaticLayer(Layer):
         for i, val in enumerate(string):
             self.tiles_map.ravel()[i] = resource_manager._tiles_repr_to_ind[val]
 
-    def render(self, renderer):
+    def render(self, renderer, current_time=0):
         renderer.render_tiled_static_layer(self)
 
 
@@ -71,8 +71,8 @@ class TiledDynamicLayer(Layer):
     def move(self, sprite, dst):
         sprite.set_ 
 
-    def render(self, renderer):
-        renderer.render_tiled_dynamic_layer(self)
+    def render(self, renderer, current_time=0):
+        renderer.render_tiled_dynamic_layer(self, current_time)
 
 
 class FreeLayer(Layer):
@@ -87,8 +87,8 @@ class FreeLayer(Layer):
     def get_sprites(self):
         return self._sprites
 
-    def render(self, renderer):
-        renderer.render_free_layer(self)
+    def render(self, renderer, current_time=0):
+        renderer.render_free_layer(self, current_time)
 
     def move(self, sprite, dst):
         sprite.set_ 
@@ -153,13 +153,13 @@ class Map(object):
             tiles_map.fill_with_string(resource_manager, ''.join(layer))
             self.layers.append(tiles_map)
 
-    def render(self, renderer):
+    def render(self, renderer, current_time=0):
         '''
     renderer: MapRender visitor    
         '''
         renderer.clean_screen()
         for layer in self.layers:
-            layer.render(renderer)
+            layer.render(renderer, current_time)
       
 
 class ObstacleHandler(object):
@@ -214,7 +214,7 @@ class MapRenderer(object):
     def clean_screen(self):
         self.screen.fill(black_color)
 
-    def render_tiled_static_layer(self, layer):
+    def render_tiled_static_layer(self, layer, current_time=0):
         tiles_map = layer.tiles_map
         for j, row in enumerate(tiles_map):
             for i, value in enumerate(row):
@@ -224,17 +224,17 @@ class MapRenderer(object):
                 pos = layer.coordinate_system.to_screen(np.array([i, j]))
                 self.screen.blit(img, pos)
 
-    def render_free_layer(self, layer):
+    def render_free_layer(self, layer, current_time=0):
         for sprite in layer.get_sprites():
-            sprite.render(self)
+            sprite.render(self, current_time)
 
-    def render_tiled_dynamic_layer(self, layer):
+    def render_tiled_dynamic_layer(self, layer, current_time=0):
         for sprite in layer.get_sprites():
-            sprite.render(self)
+            sprite.render(self, current_time)
 
-    def render_sprite(self, sprite):
+    def render_sprite(self, sprite, current_time=0):
         resource_id = sprite.get_current_resource_id()
-	t = sprite.motion.get_current_animation_time()
+	t = sprite.motion.get_current_animation_time(current_time)
         img = self.resource_manager.get_sprite_resource(resource_id).get_current_version(t)
         self.screen.blit(img, sprite.get_screen_position())
 
@@ -259,7 +259,7 @@ class Motion(object):
         else:
             return self.states_stack[0]
 
-    def get_current_animation_time(self):
+    def get_current_animation_time(self, current_time):
         return 0
 
 
@@ -275,14 +275,14 @@ class GridKeyboardFullArrowsMotion(Motion):
         Motion.__init__(self, speed)
         self.last_position = None
         self.slice_delta_time = 1. / self.speed
+        self.last_time_motion_change = 0 #FIXME
         self.last_time_point = None
         self.move_actions = []
         self.used_directions_stack = []
         self.true_directions_stack = []
-        self._curvilinear_abscissa = 0.
 
-    def get_current_animation_time(self):
-        return self._curvilinear_abscissa
+    def get_current_animation_time(self, current_time):
+        return (current_time - self.last_time_motion_change)
 
     def state_from_direction(self, direction):
         try:
@@ -306,22 +306,23 @@ class GridKeyboardFullArrowsMotion(Motion):
         norm_time = delta_time * self.speed / norm_used_direction
         while norm_time > 1: # we go beyond the checkpoint
             self.last_position += self.used_directions_stack[0]
+            delta_time -= self.slice_delta_time * norm_used_direction
+            self.last_time_point += self.slice_delta_time * norm_used_direction
             n = len(self.used_directions_stack)
             if n == 2: # use the following motion or use the only one available
                 del self.true_directions_stack[0]
                 del self.used_directions_stack[0]
                 del self.states_stack[0]
-            delta_time -= self.slice_delta_time * norm_used_direction
-            self.last_time_point += self.slice_delta_time * norm_used_direction
+                self.last_time_motion_change = self.last_time_point
             new_pos = self.last_position + self.true_directions_stack[0]
             if not sprite.obstacle_handler.sprite_can_move_to_dst(new_pos):
                 self.used_directions_stack[0] = np.array([0., 0.])
-                self.states_stack[0] = 0
+                new_state = self.state_from_direction(self.true_directions_stack[0])
+                self.states_stack[0] = new_state
             used_direction = self.used_directions_stack[0]
             norm_used_direction = np.sqrt((used_direction ** 2).sum())
             if not norm_used_direction: norm_used_direction = 1
             norm_time = delta_time * self.speed / norm_used_direction
-        self._curvilinear_abscissa = norm_time
         delta_position = norm_time * self.used_directions_stack[0]
         sprite.position = self.last_position + delta_position
         if len(self.true_directions_stack):
@@ -355,15 +356,16 @@ class GridKeyboardFullArrowsMotion(Motion):
             if n == 1: # new motion to be combined with the last one
                 self.true_directions_stack.append(new_true_direction)
                 self.used_directions_stack.append(new_used_direction)
-                new_state = self.state_from_direction(new_used_direction)
+                new_state = self.state_from_direction(new_true_direction)
                 self.states_stack.append(new_state)
             else: # replace last added motion to a combination by a new on
                 self.true_directions_stack[1] = new_true_direction
                 self.used_directions_stack[1] = new_used_direction
-                new_state = self.state_from_direction(new_used_direction)
+                new_state = self.state_from_direction(new_true_direction)
                 self.states_stack[1] = new_state
         else: # new motion from zero
             self.last_time_point = time.time()
+            self.last_time_motion_change = self.last_time_point
             new_pos = self.last_position + direction
             if sprite.obstacle_handler.sprite_can_move_to_dst(new_pos):
                 new_used_direction = direction
@@ -371,7 +373,7 @@ class GridKeyboardFullArrowsMotion(Motion):
                 new_used_direction = np.array([0., 0.])
             self.true_directions_stack.append(direction)
             self.used_directions_stack.append(new_used_direction)
-            new_state = self.state_from_direction(new_used_direction)
+            new_state = self.state_from_direction(direction)
             self.states_stack.append(new_state)
         if len(self.true_directions_stack):
             current_dir_norm = (self.true_directions_stack[0] ** 2).sum()
@@ -414,12 +416,12 @@ class GridKeyboardFullArrowsMotion(Motion):
         if n <= 1: # add next motion 
             self.true_directions_stack.append(new_true_direction)
             self.used_directions_stack.append(new_used_direction)
-            new_state = self.state_from_direction(new_used_direction)
+            new_state = self.state_from_direction(new_true_direction)
             self.states_stack.append(new_state)
         else: # n = 2 : modify next motion
             self.true_directions_stack[1] = new_true_direction
             self.used_directions_stack[1] = new_used_direction
-            new_state = self.state_from_direction(new_used_direction)
+            new_state = self.state_from_direction(new_true_direction)
             self.states_stack[1] = new_state
         if len(self.true_directions_stack):
             current_dir_norm = (self.true_directions_stack[0] ** 2).sum()
@@ -473,8 +475,8 @@ class Sprite(object):
         self.motion = motion
         self.motion.init_from_sprite(self)
 
-    def render(self, renderer):
-        renderer.render_sprite(self)
+    def render(self, renderer, current_time=0):
+        renderer.render_sprite(self, current_time)
 
     def get_screen_position(self):
         return self.layer.coordinate_system.to_screen(self.position)
@@ -498,8 +500,8 @@ class Screen(object):
     def blit(self, img, pos):
         self.sdl_surface.blit(img, pos)
 
-    def render(self, renderer, map):
-        map.render(renderer)
+    def render(self, renderer, map, current_time=0):
+        map.render(renderer, current_time)
         self.sdl_screen.blit(self.sdl_surface, (0, 0))
         pygame.display.update()
 
@@ -563,26 +565,29 @@ class ImageResource(Resource):
         Resource.__init__(self)
         self._raw_image = pygame.image.load(resource_filename).convert_alpha()
 
-    def get_current_version(self, t):
+    def get_current_version(self, animation_time):
         return self._raw_image
 
 
 class AnimationResource(Resource):
-    def __init__(self, resource_prefix):
+    def __init__(self, resource_prefix, duration=1.):
+        '''
+    resource_prefix:   complete path + prefix of numerated image files
+    duration:          duration in second of the total animation
+        '''
         Resource.__init__(self)
         self._raw_images = []
+	self.duration = duration 
 	filenames = glob.glob(resource_prefix + '*.*')
 	if len(filenames) == 0: raise ValueError
 	for filename in filenames:
             raw_image = pygame.image.load(filename).convert_alpha()
             self._raw_images.append(raw_image)
 
-    def get_current_version(self, t):
+    def get_current_version(self, animation_time):
         size = len(self._raw_images)
-        ind = int(t * size)
-	if ind < 0: ind = 0
-	elif ind >= size: ind = size - 1
-        return self._raw_images[ind]
+        ind = int(animation_time * size / self.duration)
+        return self._raw_images[ind % size]
 
 
 class ResourceManager(object):
@@ -595,10 +600,10 @@ class ResourceManager(object):
         self._tiles_repr_to_ind = {'.' : -1}
 
     def register_animation(self, sprite_id, sprite_state,
-                           motion_state, resource_prefix):
+                           motion_state, resource_prefix, duration=1.):
         resource_id = sprite_id, sprite_state, motion_state
         path = os.path.join(self.prefix, 'animations', resource_prefix)
-        self._resources[resource_id] = AnimationResource(path)
+        self._resources[resource_id] = AnimationResource(path, duration)
 
     def register_image(self, sprite_id, sprite_state,
                        motion_state, resource_filename):
@@ -678,11 +683,12 @@ def main():
     player.obstacle_handler = ObstacleHandlerFromLayer(map.layers[0],
                     free_tiles=[resource_manager._tiles_repr_to_ind[':']])
     free_layer.add_sprite(player)
+    duration = 1.5
     resource_manager.register_image(player.id, 0, 0, "player.png")
-    resource_manager.register_animation(player.id, 0, 1, "lolo-up")
-    resource_manager.register_animation(player.id, 0, 2, "lolo-down")
-    resource_manager.register_animation(player.id, 0, 3, "lolo-left")
-    resource_manager.register_animation(player.id, 0, 4, "lolo-right")
+    resource_manager.register_animation(player.id, 0, 1, "lolo-up", duration)
+    resource_manager.register_animation(player.id, 0, 2, "lolo-down", duration)
+    resource_manager.register_animation(player.id, 0, 3, "lolo-left", duration)
+    resource_manager.register_animation(player.id, 0, 4, "lolo-right", duration)
     map.sprites_to_be_updated.append(player)
 
     game.quest = Quest()
@@ -692,7 +698,7 @@ def main():
         read_event(player)
         current_time = time.time()
         map.update(current_time)
-        screen.render(renderer, map)
+        screen.render(renderer, map, current_time)
 
     # clean and quit
     pygame.font.quit()
