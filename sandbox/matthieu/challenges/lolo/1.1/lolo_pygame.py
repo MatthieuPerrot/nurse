@@ -595,34 +595,45 @@ class ResourceManager(object):
         self.prefix = prefix
         self.tiles_max_id = 0
         self._resources = {}
+        self._sprites = {}
         self._tiles = {}
         # string repr must be used only during data loading
         self._tiles_repr_to_ind = {'.' : -1}
 
     def register_animation(self, sprite_id, sprite_state,
                            motion_state, resource_prefix, duration=1.):
+        # XXX: if an animation is load 2 times wih different duration the second registration is ignored
         resource_id = sprite_id, sprite_state, motion_state
         path = os.path.join(self.prefix, 'animations', resource_prefix)
-        self._resources[resource_id] = AnimationResource(path, duration)
+	resource = self._resources.get(path)
+	if resource is None:
+            self._resources[path] = AnimationResource(path, duration)
+        self._sprites[resource_id] = self._resources.get(path)
 
     def register_image(self, sprite_id, sprite_state,
                        motion_state, resource_filename):
         resource_id = sprite_id, sprite_state, motion_state
         path = os.path.join(self.prefix, resource_filename)
-        self._resources[resource_id] = ImageResource(path)
+	resource = self._resources.get(path)
+	if resource is None:
+            self._resources[path] = ImageResource(path)
+        self._sprites[resource_id] = self._resources.get(path)
 
     def register_tile(self, tile_repr, resource_filename):
         tile_id = self.tiles_max_id
         self.tiles_max_id += 1
         path = os.path.join(self.prefix, resource_filename)
-        self._tiles[tile_id] = ImageResource(path)
+	resource = self._resources.get(path)
+	if resource is None:
+            self._resources[path] = ImageResource(path)
+        self._tiles[tile_id] = self._resources.get(path)
         self._tiles_repr_to_ind[tile_repr] = tile_id
 
     def get_tile_resource(self, resource_id):
         return self._tiles[resource_id]
 
     def get_sprite_resource(self, resource_id):
-        return self._resources[resource_id]
+        return self._sprites[resource_id]
 
 
 #-------------------------------------------------------------------------------
