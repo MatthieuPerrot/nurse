@@ -61,6 +61,16 @@ class TiledDynamicLayer(Layer):
         self.tiles_map = np.zeros((height, width), dtype=np.int16)
         self._sprites = []
 
+    @classmethod
+    def from_layer(self, layer, coordinate_system=default_coordinate_system):
+        shape = np.array(layer.tiles_map.shape)
+	ref_scale = layer.coordinate_system.scaling
+	new_scale = coordinate_system.scaling
+	shape *= ref_scale / new_scale
+	print shape, ref_scale, new_scale
+	return TiledDynamicLayer(int(shape[0]), int(shape[1]),
+					coordinate_system)
+
     def add_sprite(self, sprite):
         self._sprites.append(sprite)
         sprite.coordinate_system = self.coordinate_system
@@ -180,9 +190,23 @@ class ObstacleHandlerFromLayer(ObstacleHandler):
         self.layer = layer
         self.free_tiles = free_tiles
     
-    def sprite_can_move_to_dst(self, dst):
+    def sprite_can_move_to_dst(self, sprite, dst):
         tiles_map = self.layer.tiles_map
-        return tiles_map[dst[1], dst[0]] in self.free_tiles
+	obstacle_scale = self.layer.coordinate_system.scaling
+	sprite_scale = sprite.coordinate_system.scaling
+        scale = (sprite_scale * 1.) / obstacle_scale
+        hx, hy = sprite.hitbox - 1
+	if hx == 0 and hy == 0:
+	    delta_array = np.array([[0, 0]])
+        else:
+            delta_array = np.array([[0, 0], [0, hy], [hx, 0], [hx, hy]])
+	for delta in delta_array:
+            delta_dst = dst + delta
+            tile_value = tiles_map[delta_dst[1] * scale[1],
+			           delta_dst[0] * scale[0]]
+            is_free_tile = tile_value in self.free_tiles
+	    if not is_free_tile: return False
+	return True
 
 #-------------------------------------------------------------------------------
 class Quest(object):
@@ -315,7 +339,8 @@ class GridKeyboardFullArrowsMotion(Motion):
                 del self.states_stack[0]
                 self.last_time_motion_change = self.last_time_point
             new_pos = self.last_position + self.true_directions_stack[0]
-            if not sprite.obstacle_handler.sprite_can_move_to_dst(new_pos):
+            if not sprite.obstacle_handler.sprite_can_move_to_dst(\
+			    sprite, new_pos):
                 self.used_directions_stack[0] = np.array([0., 0.])
                 new_state = self.state_from_direction(self.true_directions_stack[0])
                 self.states_stack[0] = new_state
@@ -348,7 +373,8 @@ class GridKeyboardFullArrowsMotion(Motion):
             new_true_direction  = next_true_direction + direction
             for new_dir in [new_true_direction, direction, next_used_direction]:
                 new_pos = self.last_position + last_used_direction + new_dir
-                if sprite.obstacle_handler.sprite_can_move_to_dst(new_pos):
+                if sprite.obstacle_handler.sprite_can_move_to_dst(\
+			sprite, new_pos):
                     new_used_direction = new_dir
                     break
                 else:
@@ -367,7 +393,7 @@ class GridKeyboardFullArrowsMotion(Motion):
             self.last_time_point = time.time()
             self.last_time_motion_change = self.last_time_point
             new_pos = self.last_position + direction
-            if sprite.obstacle_handler.sprite_can_move_to_dst(new_pos):
+            if sprite.obstacle_handler.sprite_can_move_to_dst(sprite, new_pos):
                 new_used_direction = direction
             else:
                 new_used_direction = np.array([0., 0.])
@@ -408,7 +434,7 @@ class GridKeyboardFullArrowsMotion(Motion):
             del self.used_directions_stack[0]
             del self.states_stack[0]
             n -= 1
-        if sprite.obstacle_handler.sprite_can_move_to_dst(new_pos):
+        if sprite.obstacle_handler.sprite_can_move_to_dst(sprite, new_pos):
             new_used_direction = new_true_direction
         else:
             new_used_direction = np.array([0., 0.])
@@ -458,11 +484,12 @@ class GridKeyboardFullArrowsMotion(Motion):
 class Sprite(object):
     max_id = 0
 
-    def __init__(self, layer, position=(0, 0),
+    def __init__(self, layer, position=(0, 0), hitbox=np.array([1., 1.]),
                        coordinate_system=default_coordinate_system):
         self.id = Sprite.max_id
         Sprite.max_id += 1
         self.state = 0 # default
+	self.hitbox = hitbox
         self.motion = None
         self.layer = layer
         self.position = np.asarray(position)
@@ -510,10 +537,10 @@ class Screen(object):
 # game specifics
 
 class Player(Sprite):
-    def __init__(self, map, position=(0, 0),
+    def __init__(self, map, position=(0, 0), hitbox=np.array([1., 1.]),
                        coordinate_system=default_coordinate_system):
-        Sprite.__init__(self, map, position, coordinate_system)
-        self.set_motion(GridKeyboardFullArrowsMotion(speed=4.))
+        Sprite.__init__(self, map, position, hitbox, coordinate_system)
+        self.set_motion(GridKeyboardFullArrowsMotion(speed=8.))
         self.carrying_an_object = False
                 
     def key_down(self, key):
@@ -685,15 +712,18 @@ def main():
     for layer in map.layers:
         layer.coordinate_system = coordinate_system
     map.layers[1].is_actionnable = True
-    free_layer = FreeLayer(coordinate_system)
-    map.add_layer(free_layer)
+    coordinate_system2 = BasicCoordinateSystem(scaling=np.array([15, 15]))
+    player_layer = TiledDynamicLayer.from_layer(map.layers[0],
+		    			coordinate_system2)
+    #free_layer = FreeLayer(coordinate_system)
+    map.add_layer(player_layer)
 
     # player
-    player = Player(free_layer, [1, 2])
+    player = Player(player_layer, [2, 4], hitbox=np.array([2., 2.]))
     player.map = map # tmp hack
     player.obstacle_handler = ObstacleHandlerFromLayer(map.layers[0],
                     free_tiles=[resource_manager._tiles_repr_to_ind[':']])
-    free_layer.add_sprite(player)
+    player_layer.add_sprite(player)
     duration = 1.5
     resource_manager.register_image(player.id, 0, 0, "player.png")
     resource_manager.register_animation(player.id, 0, 1, "lolo-up", duration)
