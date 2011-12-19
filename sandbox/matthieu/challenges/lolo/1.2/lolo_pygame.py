@@ -43,12 +43,6 @@ class Layer(object):
         raise NotImplementedError
 
 
-class SpritedTileWrapper(object):
-    def __init__(self, layer, tile_id):
-        self.layer = layer
-	self.tile_id = tile_id
-
-
 class TiledStaticLayer(Layer):
     def __init__(self, width, height,
                        coordinate_system=default_coordinate_system):
@@ -218,6 +212,7 @@ class ObstacleHandlerFromLayers(ObstacleHandler):
         self.free_tiles = free_tiles
     
     def sprite_can_move_to_dst(self, sprite, src, dst):
+	print "=============="
         for layer in self.layers:
             can_move = self.sprite_can_move_to_dst_in_layer(sprite,
                                                    src, dst, layer)
@@ -237,15 +232,30 @@ class ObstacleHandlerFromLayers(ObstacleHandler):
                   dst[1]:dst[1] + sprite.hitbox[1]] = sprite.id
 	positions = np.argwhere((sprite_grid2 != sprite_grid) * \
 			(sprite_grid != sprite.id))
+	print ">>>>", sprite.id, layer
 	for position in positions:
-            print position, scale, sprite_grid.shape, obstacle_grid.shape
+            print "pos = ", position
             tile_id = obstacle_grid[position[0] * scale[0],
 			           position[1] * scale[1]]
 	    dst_sprite = layer.get_sprite(tile_id)
 	    # FIXME : test sprite property
             is_free_tile = (dst_sprite in [None, sprite]) or \
 			   (tile_id in self.free_tiles)
-	    if not is_free_tile: return False
+	    # XXX : test : wip
+            if not is_free_tile:
+		try:
+                    if not len(dst_sprite.motion.states_stack):
+                        dst_sprite.motion.add_move_action(dst_sprite, np.array([1., 0.]))
+                        dst_sprite.motion.remove_move_action(dst_sprite, np.array([1., 0.]))
+		        print "move object", dst_sprite.motion.states_stack
+                    else:
+                        print "moving"
+		except AttributeError, e:
+		    pass
+	    if not is_free_tile:
+	        print "<<<<<", sprite.id
+                return False
+	print "<<<<<", sprite.id
 	return True
 
 
@@ -355,7 +365,14 @@ class NoMotion(Motion):
 default_motion = NoMotion()
 
 
-class GridKeyboardFullArrowsMotion(Motion):
+class SpritedTileWrapper(object):
+    def __init__(self, layer, tile_id):
+        self.layer = layer
+	self.tile_id = tile_id
+	self.motion = default_motion
+
+
+class GridFullArrowsMotion(Motion):
     states = {0 : 'none', 1 : 'up', 2 : 'down', 3 : 'left', 4 : 'right' }
     state_from_direction_dict = {(0, 0) : 0, (0, -1) : 1, (0, 1) : 2,
                                  (-1, 0) : 3, (1, 0) : 4 }
@@ -611,7 +628,7 @@ class Player(Sprite):
     def __init__(self, map, position=(0, 0), hitbox=np.array([1., 1.]),
                        coordinate_system=default_coordinate_system):
         Sprite.__init__(self, map, position, hitbox, coordinate_system)
-        self.set_motion(GridKeyboardFullArrowsMotion(speed=8.))
+        self.set_motion(GridFullArrowsMotion(speed=8.))
         self.carrying_an_object = False
                 
     def key_down(self, key):
@@ -700,13 +717,13 @@ class ResourceManager(object):
 
     def register_animation(self, sprite_id, sprite_state,
                            motion_state, resource_prefix, duration=1.):
-        # XXX: if an animation is load 2 times wih different duration the second registration is ignored
         resource_id = sprite_id, sprite_state, motion_state
         path = os.path.join(self.prefix, 'animations', resource_prefix)
 	resource = self._resources.get(path)
 	if resource is None:
             self._resources[path] = AnimationResource(path, duration)
-        self._sprites[resource_id] = self._resources.get(path)
+	sprite_details = self._sprites.setdefault(resource_id[0], {})
+	sprite_details.setdefault(resource_id[1:], self._resources.get(path))
 
     def register_image(self, sprite_id, sprite_state,
                        motion_state, resource_filename):
@@ -715,7 +732,8 @@ class ResourceManager(object):
 	resource = self._resources.get(path)
 	if resource is None:
             self._resources[path] = ImageResource(path)
-        self._sprites[resource_id] = self._resources.get(path)
+	sprite_details = self._sprites.setdefault(resource_id[0], {})
+	sprite_details.setdefault(resource_id[1:], self._resources.get(path))
 
     def register_tile(self, tile_repr, resource_filename):
         tile_id = self.tiles_max_id
@@ -731,7 +749,14 @@ class ResourceManager(object):
         return self._tiles[resource_id]
 
     def get_sprite_resource(self, resource_id):
-        return self._sprites[resource_id]
+	sprite_id, sprite_state, motion_state = resource_id
+        sprite_details = self._sprites[sprite_id]
+	try:
+            resource = sprite_details[(sprite_state, motion_state)]
+        except KeyError:
+            resource = sprite_details[(0, 0)]
+	return resource
+            
 
 
 #-------------------------------------------------------------------------------
@@ -806,12 +831,16 @@ def main():
 
     # box 1
     box = Sprite(player_layer, [10, 12], hitbox=np.array([2., 2.]))
+    box.obstacle_handler = player.obstacle_handler
+    box.set_motion(GridFullArrowsMotion(speed=8.))
     player_layer.add_sprite(box)
     resource_manager.register_image(box.id, 0, 0, 'box.png')
     map.sprites_to_be_updated.append(box)
 
     # box 2
     box2 = Sprite(player_layer, [12, 14], hitbox=np.array([2., 2.]))
+    box2.obstacle_handler = player.obstacle_handler
+    box2.set_motion(GridFullArrowsMotion(speed=8.))
     player_layer.add_sprite(box2)
     resource_manager.register_image(box2.id, 0, 0, 'box.png')
     map.sprites_to_be_updated.append(box2)
