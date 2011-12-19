@@ -39,47 +39,71 @@ class Layer(object):
     def render(self, renderer, current_time=0):
         raise NotImplementedError
 
+    def get_sprite(self, tile_id):
+        raise NotImplementedError
+
+
+class SpritedTileWrapper(object):
+    def __init__(self, layer, tile_id):
+        self.layer = layer
+	self.tile_id = tile_id
+
 
 class TiledStaticLayer(Layer):
     def __init__(self, width, height,
                        coordinate_system=default_coordinate_system):
         Layer.__init__(self, coordinate_system)
-        self.tiles_map = np.zeros((height, width), dtype=np.int16)
+        self.grid = np.zeros((width, height), dtype=np.int16)
 
     def fill_with_string(self, resource_manager, string):
+        grid = self.grid.ravel()
         for i, val in enumerate(string):
-            self.tiles_map.ravel()[i] = resource_manager._tiles_repr_to_ind[val]
+	    grid[i] = resource_manager._tiles_repr_to_ind[val]
+	# XXX: read the data in the good order : should be optimized
+	self.grid = self.grid.reshape(self.grid.shape[1], self.grid.shape[0]).T
 
     def render(self, renderer, current_time=0):
         renderer.render_tiled_static_layer(self)
+
+    def get_sprite(self, tile_id):
+        return SpritedTileWrapper(self, tile_id)
 
 
 class TiledDynamicLayer(Layer):
     def __init__(self, width, height,
                        coordinate_system=default_coordinate_system):
         Layer.__init__(self, coordinate_system)
-        self.tiles_map = np.zeros((height, width), dtype=np.int16)
-        self._sprites = []
+        self.grid = np.zeros((width, height), dtype=np.int16)
+        self._sprites = {}
 
     @classmethod
     def from_layer(self, layer, coordinate_system=default_coordinate_system):
-        shape = np.array(layer.tiles_map.shape)
+        shape = np.array(layer.grid.shape)
 	ref_scale = layer.coordinate_system.scaling
 	new_scale = coordinate_system.scaling
 	shape *= ref_scale / new_scale
-	print shape, ref_scale, new_scale
 	return TiledDynamicLayer(int(shape[0]), int(shape[1]),
 					coordinate_system)
 
     def add_sprite(self, sprite):
-        self._sprites.append(sprite)
+        self._sprites[sprite.id] = sprite
+        pos = sprite.motion.get_last_position()
+	self.grid[pos[0]:pos[0] + sprite.hitbox[0],
+                  pos[1]:pos[1] + sprite.hitbox[1]] = sprite.id
         sprite.coordinate_system = self.coordinate_system
 
     def get_sprites(self):
         return self._sprites
 
-    def move(self, sprite, dst):
-        sprite.set_ 
+    def get_sprite(self, tile_id):
+        if tile_id == 0: return None
+        return self._sprites[tile_id]
+
+    def update_sprite_grid_position(self, sprite, position):
+	self.grid[self.grid == sprite.id] = 0
+        pos = sprite.motion.get_last_position()
+	self.grid[pos[0]:pos[0] + sprite.hitbox[0],
+                  pos[1]:pos[1] + sprite.hitbox[1]] = sprite.id
 
     def render(self, renderer, current_time=0):
         renderer.render_tiled_dynamic_layer(self, current_time)
@@ -88,20 +112,23 @@ class TiledDynamicLayer(Layer):
 class FreeLayer(Layer):
     def __init__(self, coordinate_system=default_coordinate_system):
         Layer.__init__(self, coordinate_system)
-        self._sprites = []
+        self._sprites = {}
 
     def add_sprite(self, sprite):
-        self._sprites.append(sprite)
+        self._sprites[sprite.id] = sprite
         sprite.coordinate_system = self.coordinate_system
 
     def get_sprites(self):
         return self._sprites
 
+    def get_sprite(self, tile_id):
+        return self._sprites[tile_id]
+
     def render(self, renderer, current_time=0):
         renderer.render_free_layer(self, current_time)
 
-    def move(self, sprite, dst):
-        sprite.set_ 
+    def update_sprite_grid_position(self, sprite, position):
+        pass
 
 
 class Map(object):
@@ -159,9 +186,9 @@ class Map(object):
         # convert layers
         self.layers = []
         for layer in layers:
-            tiles_map = TiledStaticLayer(width, height)
-            tiles_map.fill_with_string(resource_manager, ''.join(layer))
-            self.layers.append(tiles_map)
+            grid = TiledStaticLayer(width, height)
+            grid.fill_with_string(resource_manager, ''.join(layer))
+            self.layers.append(grid)
 
     def render(self, renderer, current_time=0):
         '''
@@ -179,34 +206,49 @@ class NoObstacleHandler(object):
     def __init__(self):
         ObstacleHandler.__init__(self)
 
-    def sprite_can_move_to_dst(self, dst):
+    def sprite_can_move_to_dst(self, sprite, src, dst):
         return True
 
 default_obstacle_handler = NoObstacleHandler()
 
-class ObstacleHandlerFromLayer(ObstacleHandler):
-    def __init__(self, layer, free_tiles=[]):
+class ObstacleHandlerFromLayers(ObstacleHandler):
+    def __init__(self, layers, free_tiles=[]):
         ObstacleHandler.__init__(self)
-        self.layer = layer
+        self.layers = layers
         self.free_tiles = free_tiles
     
-    def sprite_can_move_to_dst(self, sprite, dst):
-        tiles_map = self.layer.tiles_map
-	obstacle_scale = self.layer.coordinate_system.scaling
+    def sprite_can_move_to_dst(self, sprite, src, dst):
+        for layer in self.layers:
+            can_move = self.sprite_can_move_to_dst_in_layer(sprite,
+                                                   src, dst, layer)
+            if not can_move: return False
+        return True
+
+    def sprite_can_move_to_dst_in_layer(self, sprite, src, dst, layer):
+        #XXX: do not check the entire grid
 	sprite_scale = sprite.coordinate_system.scaling
+        obstacle_grid = layer.grid
+	obstacle_scale = layer.coordinate_system.scaling
         scale = (sprite_scale * 1.) / obstacle_scale
-        hx, hy = sprite.hitbox - 1
-	if hx == 0 and hy == 0:
-	    delta_array = np.array([[0, 0]])
-        else:
-            delta_array = np.array([[0, 0], [0, hy], [hx, 0], [hx, hy]])
-	for delta in delta_array:
-            delta_dst = dst + delta
-            tile_value = tiles_map[delta_dst[1] * scale[1],
-			           delta_dst[0] * scale[0]]
-            is_free_tile = tile_value in self.free_tiles
+        sprite_grid = sprite.layer.grid
+        sprite_grid2 = sprite_grid.copy()
+	sprite_grid2[sprite_grid2 == sprite.id] = 0
+	sprite_grid2[dst[0]:dst[0] + sprite.hitbox[0],
+                  dst[1]:dst[1] + sprite.hitbox[1]] = sprite.id
+	positions = np.argwhere((sprite_grid2 != sprite_grid) * \
+			(sprite_grid != sprite.id))
+	for position in positions:
+            print position, scale, sprite_grid.shape, obstacle_grid.shape
+            tile_id = obstacle_grid[position[0] * scale[0],
+			           position[1] * scale[1]]
+	    dst_sprite = layer.get_sprite(tile_id)
+	    # FIXME : test sprite property
+            is_free_tile = (dst_sprite in [None, sprite]) or \
+			   (tile_id in self.free_tiles)
 	    if not is_free_tile: return False
 	return True
+
+
 
 #-------------------------------------------------------------------------------
 class Quest(object):
@@ -239,10 +281,10 @@ class MapRenderer(object):
         self.screen.fill(black_color)
 
     def render_tiled_static_layer(self, layer, current_time=0):
-        tiles_map = layer.tiles_map
-        for j, row in enumerate(tiles_map):
-            for i, value in enumerate(row):
-                tile_id = tiles_map[j, i]
+        grid = layer.grid
+        for i, row in enumerate(grid):
+            for j, value in enumerate(row):
+                tile_id = grid[i, j]
                 if tile_id == -1: continue
                 img = self.resource_manager.get_tile_resource(tile_id).get_current_version(0)
                 pos = layer.coordinate_system.to_screen(np.array([i, j]))
@@ -253,7 +295,7 @@ class MapRenderer(object):
             sprite.render(self, current_time)
 
     def render_tiled_dynamic_layer(self, layer, current_time=0):
-        for sprite in layer.get_sprites():
+        for sprite in layer.get_sprites().values():
             sprite.render(self, current_time)
 
     def render_sprite(self, sprite, current_time=0):
@@ -270,6 +312,7 @@ class Motion(object):
         '''
         self.speed = speed # tiles per seconds
         self.states_stack = []
+        self.last_position = None
 
     def init_from_sprite(self, sprite):
         raise NotImplementedError
@@ -286,6 +329,31 @@ class Motion(object):
     def get_current_animation_time(self, current_time):
         return 0
 
+    def get_last_position(self):
+        return self.last_position
+
+
+class NoMotion(Motion):
+    def __init__(self, speed=1.):
+        Motion.__init__(self, speed)
+
+    def init_from_sprite(self, sprite):
+        self.last_position = sprite.position
+
+    def update_sprite(self, sprite, dt):
+        pass
+
+    def get_current_state(self):
+        return 0
+
+    def get_current_animation_time(self, current_time):
+        return 0
+
+    def get_last_position(self):
+        return self.last_position
+
+default_motion = NoMotion()
+
 
 class GridKeyboardFullArrowsMotion(Motion):
     states = {0 : 'none', 1 : 'up', 2 : 'down', 3 : 'left', 4 : 'right' }
@@ -297,7 +365,6 @@ class GridKeyboardFullArrowsMotion(Motion):
     speed: unit per second (according to the sprite coordinate system)
         '''
         Motion.__init__(self, speed)
-        self.last_position = None
         self.slice_delta_time = 1. / self.speed
         self.last_time_motion_change = 0 #FIXME
         self.last_time_point = None
@@ -330,6 +397,7 @@ class GridKeyboardFullArrowsMotion(Motion):
         norm_time = delta_time * self.speed / norm_used_direction
         while norm_time > 1: # we go beyond the checkpoint
             self.last_position += self.used_directions_stack[0]
+	    sprite.layer.update_sprite_grid_position(sprite, self.last_position)
             delta_time -= self.slice_delta_time * norm_used_direction
             self.last_time_point += self.slice_delta_time * norm_used_direction
             n = len(self.used_directions_stack)
@@ -340,7 +408,7 @@ class GridKeyboardFullArrowsMotion(Motion):
                 self.last_time_motion_change = self.last_time_point
             new_pos = self.last_position + self.true_directions_stack[0]
             if not sprite.obstacle_handler.sprite_can_move_to_dst(\
-			    sprite, new_pos):
+			    sprite, self.last_position, new_pos):
                 self.used_directions_stack[0] = np.array([0., 0.])
                 new_state = self.state_from_direction(self.true_directions_stack[0])
                 self.states_stack[0] = new_state
@@ -374,7 +442,7 @@ class GridKeyboardFullArrowsMotion(Motion):
             for new_dir in [new_true_direction, direction, next_used_direction]:
                 new_pos = self.last_position + last_used_direction + new_dir
                 if sprite.obstacle_handler.sprite_can_move_to_dst(\
-			sprite, new_pos):
+			sprite, self.last_position, new_pos):
                     new_used_direction = new_dir
                     break
                 else:
@@ -393,7 +461,8 @@ class GridKeyboardFullArrowsMotion(Motion):
             self.last_time_point = time.time()
             self.last_time_motion_change = self.last_time_point
             new_pos = self.last_position + direction
-            if sprite.obstacle_handler.sprite_can_move_to_dst(sprite, new_pos):
+            if sprite.obstacle_handler.sprite_can_move_to_dst(sprite,
+				    self.last_position, new_pos):
                 new_used_direction = direction
             else:
                 new_used_direction = np.array([0., 0.])
@@ -434,7 +503,8 @@ class GridKeyboardFullArrowsMotion(Motion):
             del self.used_directions_stack[0]
             del self.states_stack[0]
             n -= 1
-        if sprite.obstacle_handler.sprite_can_move_to_dst(sprite, new_pos):
+        if sprite.obstacle_handler.sprite_can_move_to_dst(sprite,
+					self.last_position, new_pos):
             new_used_direction = new_true_direction
         else:
             new_used_direction = np.array([0., 0.])
@@ -482,7 +552,7 @@ class GridKeyboardFullArrowsMotion(Motion):
 
 
 class Sprite(object):
-    max_id = 0
+    max_id = 1
 
     def __init__(self, layer, position=(0, 0), hitbox=np.array([1., 1.]),
                        coordinate_system=default_coordinate_system):
@@ -490,10 +560,11 @@ class Sprite(object):
         Sprite.max_id += 1
         self.state = 0 # default
 	self.hitbox = hitbox
-        self.motion = None
         self.layer = layer
         self.position = np.asarray(position)
         self.obstacle_handler = default_obstacle_handler
+        self.motion = default_motion
+        self.motion.init_from_sprite(self)
 
     def get_current_resource_id(self):
         return self.id, self.state, self.motion.get_current_state()
@@ -720,8 +791,8 @@ def main():
 
     # player
     player = Player(player_layer, [2, 4], hitbox=np.array([2., 2.]))
-    player.map = map # tmp hack
-    player.obstacle_handler = ObstacleHandlerFromLayer(map.layers[0],
+    player.obstacle_handler = ObstacleHandlerFromLayers(\
+		    [map.layers[0], player_layer],
                     free_tiles=[resource_manager._tiles_repr_to_ind[':']])
     player_layer.add_sprite(player)
     duration = 1.5
@@ -731,6 +802,20 @@ def main():
     resource_manager.register_animation(player.id, 0, 3, "lolo-left", duration)
     resource_manager.register_animation(player.id, 0, 4, "lolo-right", duration)
     map.sprites_to_be_updated.append(player)
+
+
+    # box 1
+    box = Sprite(player_layer, [10, 12], hitbox=np.array([2., 2.]))
+    player_layer.add_sprite(box)
+    resource_manager.register_image(box.id, 0, 0, 'box.png')
+    map.sprites_to_be_updated.append(box)
+
+    # box 2
+    box2 = Sprite(player_layer, [12, 14], hitbox=np.array([2., 2.]))
+    player_layer.add_sprite(box2)
+    resource_manager.register_image(box2.id, 0, 0, 'box.png')
+    map.sprites_to_be_updated.append(box2)
+
 
     game.quest = Quest()
 
